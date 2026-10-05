@@ -24,25 +24,37 @@ export function useVisualEdit({ iframeRef, portfolio, onChange }: UseVisualEditO
     latest.current = { portfolio, onChange }
   })
 
+  // History only covers this hook's own edits. A portfolio change from elsewhere (e.g. the
+  // chat switching template) clears it, so undo can't restore a snapshot that predates it.
+  const emitted = useRef<Portfolio | null>(null)
+  const emit = useCallback((next: Portfolio) => {
+    emitted.current = next
+    latest.current.onChange(next)
+  }, [])
+  useEffect(() => {
+    if (emitted.current !== portfolio) setHistory({ past: [], future: [] })
+    emitted.current = null
+  }, [portfolio])
+
   const commit = useCallback((next: Portfolio) => {
     const current = latest.current.portfolio
     setHistory(({ past }) => ({ past: [...past, current].slice(-MAX_HISTORY), future: [] }))
-    latest.current.onChange(next)
-  }, [])
+    emit(next)
+  }, [emit])
 
   const undo = useCallback(() => {
     const previous = history.past.at(-1)
     if (!previous) return
     setHistory({ past: history.past.slice(0, -1), future: [latest.current.portfolio, ...history.future] })
-    latest.current.onChange(previous)
-  }, [history])
+    emit(previous)
+  }, [history, emit])
 
   const redo = useCallback(() => {
     const [next, ...rest] = history.future
     if (!next) return
     setHistory({ past: [...history.past, latest.current.portfolio], future: rest })
-    latest.current.onChange(next)
-  }, [history])
+    emit(next)
+  }, [history, emit])
 
   // Shim messaging. The shim announces `ready` on every page load, and we answer with the mode.
   useEffect(() => {

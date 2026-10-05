@@ -8,6 +8,8 @@ import { portfolio } from './content/portfolio'
 export function App() {
   return (
     <div data-theme={portfolio.template}>
+      {/* React 19 hoists <title> into <head>, so the tab shows the owner's name. */}
+      <title>{portfolio.profile.name}</title>
       <main className="mx-auto max-w-3xl space-y-20 px-6 py-16 sm:py-24">
         <Hero profile={portfolio.profile} />
         <About bio={portfolio.profile.bio} />

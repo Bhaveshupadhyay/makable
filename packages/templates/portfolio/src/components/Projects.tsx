@@ -9,7 +9,7 @@ export function Projects({ projects }: { projects: PortfolioProject[] }) {
       <ul className="grid gap-4 sm:grid-cols-2">
         {projects.map((project, i) => (
           <li
-            key={project.repoUrl}
+            key={`${i}-${project.repoUrl}`}
             className="flex flex-col gap-3 rounded-(--radius) border border-(--border) bg-(--card) p-5 transition-colors hover:border-(--accent)"
           >
             <a href={project.repoUrl} target="_blank" rel="noreferrer" className="space-y-2">

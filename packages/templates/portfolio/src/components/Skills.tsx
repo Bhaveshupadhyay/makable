@@ -7,7 +7,7 @@ export function Skills({ skills }: { skills: string[] }) {
       <ul className="flex flex-wrap gap-2">
         {skills.map((skill, i) => (
           <li
-            key={skill}
+            key={`${i}-${skill}`}
             data-content={`skills.${i}`}
             className="rounded-(--radius) border border-(--border) bg-(--card) px-3 py-1 text-sm"
           >

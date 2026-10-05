@@ -112,6 +112,9 @@ try {
   console.log('✓ chat: GitHub lookup, headline, bio, email, links (with re-asks on bad input)')
   await expectEditable(frame, 'React')
   await expectVisualEdit(page, frame, 'React')
+  const title = await frame.locator('html').evaluate(() => document.title)
+  if (title !== 'React edited') throw new Error(`React template title should follow profile.name, got "${title}"`)
+  console.log('✓ React template: document title follows profile.name')
   await shot('builder.png')
 
   // conversation and portfolio survive a reload
@@ -122,8 +125,20 @@ try {
 
   // template switch from the chat: static Paper template, then back to a React one
   await page.getByRole('button', { name: 'Change template' }).click()
+  // Undo history is in memory only (gone after the reload above), so make a fresh edit first.
+  await page.getByRole('button', { name: 'Edit text' }).click()
+  await frame.locator('[data-content="profile.name"]').click()
+  await page.keyboard.press('ControlOrMeta+A')
+  await page.keyboard.type('Before switch')
+  await page.keyboard.press('Enter')
+  await frame.locator('[data-content="profile.name"]', { hasText: 'Before switch' }).waitFor({ timeout: 30000 })
+  await page.getByRole('button', { name: 'Edit text' }).click()
+  if (await page.getByRole('button', { name: 'Undo' }).isDisabled()) throw new Error('expected undo history before the switch')
   await page.getByRole('button', { name: 'Paper template' }).last().click()
   await frame.locator('.page .sidebar').waitFor({ timeout: 60000 })
+  // A chat-side change clears visual-edit history, so undo can't revert the template switch.
+  if (!(await page.getByRole('button', { name: 'Undo' }).isDisabled())) throw new Error('undo history survived a chat-side change')
+  console.log('✓ visual edit: history cleared by chat-side template switch')
   const font = await frame.locator('.sidebar h1').evaluate((el) => getComputedStyle(el).fontFamily)
   if (!font.includes('Georgia')) throw new Error(`static template styles not applied (h1 font: ${font})`)
   await expectEditable(frame, 'static')
