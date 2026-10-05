@@ -27,3 +27,8 @@ test('isSkip', () => {
   for (const text of ['skip', 'No.', 'none', 'Keep it', 'keep']) expect(isSkip(text)).toBe(true)
   for (const text of ['skip the intro and say hi', 'I build things']) expect(isSkip(text)).toBe(false)
 })
+
+test('parseLinks keeps a standalone domain that also appears in an earlier email', () => {
+  expect(parseLinks('me@ada.dev, ada.dev')).toEqual({ website: 'https://ada.dev' })
+  expect(parseLinks('ada.dev and me@ada.dev')).toEqual({ website: 'https://ada.dev' })
+})

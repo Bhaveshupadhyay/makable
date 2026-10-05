@@ -27,11 +27,10 @@ export type ParsedLinks = Partial<Record<'linkedin' | 'x' | 'website', string>>
 /** Finds URLs in free text and sorts them into LinkedIn, X and website. GitHub links are ignored. */
 export function parseLinks(text: string): ParsedLinks {
   const links: ParsedLinks = {}
-  const candidates = text.match(/(?:https?:\/\/)?(?:[a-z\d-]+\.)+[a-z]{2,}(?:\/[^\s,]*)?/gi) ?? []
-  for (const raw of candidates) {
+  for (const match of text.matchAll(/(?:https?:\/\/)?(?:[a-z\d-]+\.)+[a-z]{2,}(?:\/[^\s,]*)?/gi)) {
+    const raw = match[0]
     // The part after @ in an email address looks like a domain; skip it.
-    const index = text.indexOf(raw)
-    if (index > 0 && text[index - 1] === '@') continue
+    if (match.index > 0 && text[match.index - 1] === '@') continue
     const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
     if (!linkSchema.website.safeParse(url).success) continue
     const host = new URL(url).hostname.replace(/^www\./, '')
