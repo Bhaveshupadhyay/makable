@@ -2,6 +2,7 @@ import type { TemplateId } from '@makable/shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
 import { useSession } from '@/features/auth'
+import { useTemplateCatalog } from '@/features/templates'
 import { fetchGithubData } from '../api/github'
 import { type ChatContext, initialConversation } from '../lib/conversation'
 import { useBuilderStore } from '../store'
@@ -10,13 +11,17 @@ import { useBuilderStore } from '../store'
 export function useBuilder() {
   const { data: user } = useSession()
   const queryClient = useQueryClient()
+  const { data: catalog } = useTemplateCatalog()
   const { login, conversation: stored, dispatch, setPortfolio, reset } = useBuilderStore()
 
   // The persisted conversation may belong to a previous account on this browser. Until the
   // reset effect below runs, show a fresh conversation and ignore actions, so it never leaks.
   const ctx = useMemo<ChatContext | null>(
-    () => (user && login === user.login ? { login: user.login, name: user.name, avatarUrl: user.avatarUrl } : null),
-    [user, login],
+    () =>
+      user && login === user.login
+        ? { login: user.login, name: user.name, avatarUrl: user.avatarUrl, templates: catalog?.templates ?? [] }
+        : null,
+    [user, login, catalog],
   )
   const conversation = useMemo(() => (ctx ? stored : initialConversation()), [ctx, stored])
 
