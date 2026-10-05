@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+/*
+ * Themes are plain CSS variables, used from Tailwind as `bg-(--bg)` etc.
+ * Plain variables (not @theme) work both in the Vite build and in the
+ * in-browser preview, where Tailwind runs from @tailwindcss/browser.
+ */
+[data-theme="minimal"] {
+  --bg: #ffffff;
+  --fg: #0a0a0a;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --card: #f7f7f7;
+  --border: #e5e5e5;
+  --radius: 0.75rem;
+  --font: ui-sans-serif, system-ui, sans-serif;
+  --heading-font: var(--font);
+}
+
+[data-theme="terminal"] {
+  --bg: #0b0f0c;
+  --fg: #c9f7d1;
+  --muted: #6b8f73;
+  --accent: #39ff88;
+  --card: #111814;
+  --border: #1f2d24;
+  --radius: 0.25rem;
+  --font: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --heading-font: var(--font);
+}
+
+[data-theme="bento"] {
+  --bg: #f4f1ea;
+  --fg: #1c1917;
+  --muted: #78716c;
+  --accent: #ea580c;
+  --card: #ffffff;
+  --border: #e7e2d8;
+  --radius: 1.5rem;
+  --font: ui-sans-serif, system-ui, sans-serif;
+  --heading-font: var(--font);
+}
+
+[data-theme="editorial"] {
+  --bg: #fbfaf7;
+  --fg: #1a1a1a;
+  --muted: #6b6b6b;
+  --accent: #9f1239;
+  --card: #f3f1ec;
+  --border: #dedbd2;
+  --radius: 0;
+  --font: ui-sans-serif, system-ui, sans-serif;
+  --heading-font: Georgia, "Times New Roman", serif;
+}
+
+[data-theme] {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+}
+
+[data-theme] h1,
+[data-theme] h2,
+[data-theme] h3 {
+  font-family: var(--heading-font);
+}

@@ -1,0 +1,16 @@
+{
+  "name": "makable",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --cwd apps/web dev",
+    "build": "bun run --cwd apps/web build",
+    "lint": "bun run --cwd apps/web lint",
+    "typecheck": "bun run --cwd apps/web typecheck",
+    "test": "bun run --cwd packages/shared test && bun run --cwd apps/web test"
+  }
+}

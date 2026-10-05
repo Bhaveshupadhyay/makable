@@ -1,0 +1,169 @@
+:root {
+  --bg: #fffdf5;
+  --fg: #27272a;
+  --muted: #71717a;
+  --accent: #0d9488;
+  --rule: #e7e5d8;
+  --serif: Georgia, "Times New Roman", serif;
+  --sans: ui-sans-serif, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.6 var(--sans);
+}
+
+a {
+  color: inherit;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--serif);
+  font-weight: 600;
+  margin: 0;
+}
+
+.page {
+  display: grid;
+  gap: 3rem;
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 4rem 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .page {
+    grid-template-columns: 16rem 1fr;
+    gap: 4rem;
+  }
+  .sidebar {
+    position: sticky;
+    top: 4rem;
+    align-self: start;
+  }
+}
+
+.sidebar > * + * {
+  margin-top: 0.75rem;
+}
+
+.avatar {
+  width: 6rem;
+  height: 6rem;
+  border-radius: 50%;
+  border: 1px solid var(--rule);
+  object-fit: cover;
+}
+
+.sidebar h1 {
+  font-size: 2.25rem;
+  line-height: 1.15;
+}
+
+.headline {
+  color: var(--accent);
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 1.15rem;
+}
+
+.muted,
+.meta {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.email {
+  display: inline-block;
+  color: var(--accent);
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+}
+
+.content section + section {
+  margin-top: 3rem;
+}
+
+.content h2 {
+  font-size: 0.8rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-family: var(--sans);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.bio {
+  font-family: var(--serif);
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.skills li {
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 0.15rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.projects {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.projects li + li {
+  margin-top: 1.5rem;
+}
+
+.projects h3 {
+  font-size: 1.25rem;
+}
+
+.projects a {
+  text-decoration: none;
+}
+
+.projects a:hover h3 {
+  color: var(--accent);
+}
+
+.projects p {
+  margin: 0.25rem 0 0;
+}
+
+.meta {
+  display: flex;
+  gap: 1rem;
+}
+
+.meta a {
+  color: var(--accent);
+  margin-left: auto;
+}

@@ -1,0 +1,4 @@
+export { VisualEditBanner } from './components/visual-edit-banner'
+export { VisualEditControls } from './components/visual-edit-controls'
+export { useVisualEdit, type VisualEdit } from './hooks/use-visual-edit'
+export { EDIT_SHIM } from './shim'
