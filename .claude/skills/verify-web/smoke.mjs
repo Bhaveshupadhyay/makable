@@ -16,10 +16,11 @@ const errors = []
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
 page.on('console', (m) => m.type() === 'error' && errors.push(`console: ${m.text()}`))
 // Editable contract: content elements carry data-content paths (see edit-template skill).
-async function expectEditable(frame, label) {
+// Catalog templates may show a field more than once (e.g. the name in nav and hero), hence `exact`.
+async function expectEditable(frame, label, { exact = true } = {}) {
   for (const path of ['profile.name', 'profile.headline', 'projects.0.name']) {
     const count = await frame.locator(`[data-content="${path}"]`).count()
-    if (count !== 1) throw new Error(`${label}: expected one [data-content="${path}"], found ${count}`)
+    if (exact ? count !== 1 : count < 1) throw new Error(`${label}: expected one [data-content="${path}"], found ${count}`)
   }
   console.log(`✓ ${label} template: content tagged with data-content`)
 }
@@ -149,6 +150,35 @@ try {
   await frame.locator('[data-theme="bento"]').waitFor({ timeout: 60000 })
   await frame.getByText('static edited').waitFor()
   console.log('✓ template switch: React → static → React, content kept')
+
+  // catalog template with binary assets: images are served from its hosted demo, not the preview
+  await say('show me the templates')
+  const picker = page.getByRole('group', { name: 'Templates' }).last()
+  const thumbs = picker.locator('img')
+  await thumbs.first().evaluate((img) => img.decode())
+  // The chat shows a short list of 6 (plus the current template if it's further down).
+  const shortlist = await thumbs.count()
+  const showAll = page.getByRole('button', { name: /^Show all \d+ templates$/ }).last()
+  const total = Number((await showAll.textContent()).match(/\d+/)[0])
+  if (shortlist !== 6 || total <= 6) throw new Error(`expected a short list of 6 of ${total}, got ${shortlist}`)
+  await showAll.click()
+  if ((await thumbs.count()) !== total) throw new Error(`Show all should list ${total} templates, got ${await thumbs.count()}`)
+  console.log(`✓ picker: ${shortlist} of ${total} catalog templates, then Show all`)
+  await page.getByRole('button', { name: 'Dopefolio template' }).last().click()
+  const assets = frame.locator('img[src*="/makable-templates/"]')
+  await assets.first().waitFor({ state: 'attached', timeout: 60000 })
+  const broken = await assets.evaluateAll(async (imgs) => {
+    await Promise.all(imgs.map((img) => img.decode().catch(() => {})))
+    return imgs.filter((img) => !img.naturalWidth).map((img) => img.src)
+  })
+  if (broken.length) throw new Error(`template assets failed to load: ${broken.join(', ')}`)
+  await frame.getByText('static edited').first().waitFor()
+  await expectEditable(frame, 'Dopefolio', { exact: false })
+  await shot('builder-remote-assets.png')
+  console.log(`✓ Dopefolio template: ${await assets.count()} hosted assets load, content kept`)
+  await say('change template')
+  await page.getByRole('button', { name: 'Dopefolio template', pressed: true }).last().waitFor()
+  console.log('✓ picker: the current template stays visible in the short list')
 
   // mobile: chat and preview stack vertically
   await page.setViewportSize({ width: 390, height: 844 })

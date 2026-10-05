@@ -9,8 +9,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
-      // Site templates, loaded as raw text into the preview (see features/preview/lib/project-files.ts).
-      '@templates': fileURLToPath(new URL('../../packages/templates', import.meta.url)),
     },
   },
   server: {

@@ -1,4 +1,4 @@
-import { templateCatalog, templateIds, type Portfolio, type TemplateId } from '@makable/shared'
+import type { Portfolio, TemplateId } from '@makable/shared'
 import type { GithubData } from '../api/github'
 import { applyGithubData } from './github-content'
 import { isSkip, parseEmail, parseGithubLogin, parseLinks } from './parse'
@@ -34,8 +34,13 @@ export type ChatEvent =
   | { type: 'github-loaded'; data: GithubData }
   | { type: 'github-failed'; login: string }
 
-/** The signed-in user, used for first-draft content before GitHub is looked up. */
-export type ChatContext = { login: string; name: string | null; avatarUrl: string }
+export type TemplateOption = { id: TemplateId; name: string }
+
+/**
+ * The signed-in user, used for first-draft content before GitHub is looked up,
+ * and the published templates (empty until the catalog loads).
+ */
+export type ChatContext = { login: string; name: string | null; avatarUrl: string; templates: readonly TemplateOption[] }
 
 const id = () => crypto.randomUUID()
 const user = (text: string): ChatMessage => ({ id: id(), role: 'user', text })
@@ -122,15 +127,15 @@ function reask(state: Conversation, ctx: ChatContext, text: string): Conversatio
   return reply(state, text, { replies: promptFor(state.step, state.portfolio, ctx).replies })
 }
 
-function matchTemplate(text: string): TemplateId | undefined {
+function matchTemplate(text: string, templates: readonly TemplateOption[]): TemplateId | undefined {
   const lower = text.toLowerCase()
-  return templateIds.find((t) => lower.includes(t) || lower.includes(templateCatalog[t].name.toLowerCase()))
+  return templates.find((t) => lower.includes(t.id) || lower.includes(t.name.toLowerCase()))?.id
 }
 
 export function reduceConversation(state: Conversation, event: ChatEvent, ctx: ChatContext): Conversation {
   switch (event.type) {
     case 'select-template': {
-      const name = templateCatalog[event.template].name
+      const name = ctx.templates.find((t) => t.id === event.template)?.name ?? event.template
       const portfolio = state.portfolio ? { ...state.portfolio, template: event.template } : firstDraft(event.template, ctx)
       const withChoice = { ...state, portfolio, messages: [...state.messages, user(`Use the ${name} template`)] }
       if (state.step === 'intent' || state.step === 'template') {
@@ -170,7 +175,7 @@ export function reduceConversation(state: Conversation, event: ChatEvent, ctx: C
             : reply(s, 'Right now I can only build developer portfolios. Want to start one?', { replies: ['Build my portfolio'] })
 
         case 'template': {
-          const template = matchTemplate(text)
+          const template = matchTemplate(text, ctx.templates)
           return template
             ? reduceConversation(state, { type: 'select-template', template }, ctx)
             : reply(s, 'Pick one of the templates above, or type its name.')

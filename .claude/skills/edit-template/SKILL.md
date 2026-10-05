@@ -7,12 +7,19 @@ description: Change or add a site template (packages/templates/*), the template 
 
 Templates are copied into users' repos and also run inside the builder's Sandpack preview. Every change must work in both.
 
+## Where templates come from
+The builder doesn't bundle `packages/templates`. It reads the published catalog (`https://bhaveshupadhyay.github.io/makable-templates/catalog.json`, override with `VITE_TEMPLATE_CATALOG_URL`), which is built from the separate `makable-templates` repo. Each entry (`templateEntrySchema` in `packages/shared/src/template-catalog.ts`) has `id`, `name`, `kind`, `contentPath`, an optional `theme`, and https `thumbnailUrl`, `demoUrl` and `filesUrl`.
+- `files.json` maps repo paths to text contents, plus a `binary` map of base64 files. The preview drops binaries and points literal references to them (`./assets/a.png`, `url(../img/bg.png)`) at the demo folder, so every binary file must also be served under `demo/`. Paths built at runtime (`'./img/' + name`) aren't rewritten. Use literal paths.
+- Themed React entries share one `files.json`. The builder writes `theme` into the content's `template` field, and the template picks its look from that.
+- Entries that fail the schema (bad ID, non-https URL, unsafe `contentPath`, unknown `kind`) or that repeat an ID are silently dropped from the picker.
+
 ## Adding a template
-- **New look for the React template:** add a `[data-theme="<id>"]` block in `packages/templates/portfolio/src/index.css`. Then add the ID to `templateIds` and a `templateCatalog` entry spreading `REACT_PORTFOLIO` (`packages/shared/src/portfolio.ts`). Add it to the `TemplateId` union in the template's `src/content/types.ts`.
-- **New template folder:** create `packages/templates/<dir>/`. Add the catalog entry with `kind`, `dir`, `contentPath` and `thumbnail`, and give the content file the exact header that `renderPortfolioSource` emits for its kind (the tests compare headers).
+- Publish it in the `makable-templates` repo with a catalog entry, `files.json`, thumbnail and demo. The picker and preview pick it up on the next catalog fetch, with no builder change needed.
+- **New look for the React template:** add a `[data-theme="<id>"]` block in the template's `src/index.css` and a catalog entry with that `theme`.
+- Give the content file the exact header that `renderPortfolioSource` emits for its kind (the local copies here are checked by tests).
   - Static: root `index.html`, no `src/main.tsx`.
   - React: entry `src/main.tsx`.
-- The picker, the preview and the tests pick the template up from the catalog automatically. Add it to `smoke.mjs` if it's a new kind or layout.
+- Add it to `smoke.mjs` if it's a new kind or layout.
 
 ## Visual-edit contract
 - Tag every element that shows a text field with `data-content="<path>"`, and show the field's text only. Wrap icons outside the tagged element, because the edit overlay replaces the element's text.
@@ -27,7 +34,7 @@ Templates are copied into users' repos and also run inside the builder's Sandpac
 - **Content** lives only in `src/content/portfolio.ts`. Components receive it via props. Every element that renders a content field gets `data-content="<dot.path>"` (array indices included, e.g. `projects.${i}.name`).
 - **Schema changes** touch three places together:
   1. `packages/shared/src/portfolio.ts` (zod, the source of truth)
-  2. `packages/templates/portfolio/src/content/types.ts` (hand-written mirror). `apps/web/src/features/preview/lib/template-contract.ts` fails typecheck if they differ.
+  2. Every published template's content types and renderer (React `src/content/types.ts` is a hand-written mirror). Nothing checks this at compile time any more, because templates are fetched at runtime.
   3. The builder: `apps/web/src/features/builder/lib/{conversation,github-content}.ts` (first draft, GitHub mapping, and a chat step if the user should provide it), plus their tests.
   4. The static template's `main.js` renderer and its sample `content/portfolio.js`.
   If you rename or remove a field, bump the builder store's persist `version` (`features/builder/store.ts`) and add a `migrate` step for saved conversations.

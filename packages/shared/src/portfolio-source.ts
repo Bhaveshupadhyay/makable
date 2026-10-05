@@ -1,4 +1,5 @@
-import type { Portfolio, TemplateKind } from './portfolio'
+import type { Portfolio } from './portfolio'
+import type { TemplateKind } from './template-catalog'
 
 const HEADER = `// All copy on the site lives here. Components read it and tag elements with
 // \`data-content="<path>"\` so the builder's visual editor can patch this file.`

@@ -2,7 +2,18 @@ import { expect, test } from 'bun:test'
 import type { GithubData } from '../api/github'
 import { type ChatContext, type ChatEvent, type Conversation, initialConversation, reduceConversation } from './conversation'
 
-const ctx: ChatContext = { login: 'octocat', name: 'The Octocat', avatarUrl: 'https://avatars.example/octocat.png' }
+const ctx: ChatContext = {
+  login: 'octocat',
+  name: 'The Octocat',
+  avatarUrl: 'https://avatars.example/octocat.png',
+  templates: [
+    { id: 'minimal', name: 'Minimal' },
+    { id: 'terminal', name: 'Terminal' },
+    { id: 'bento', name: 'Bento' },
+    { id: 'paper', name: 'Paper' },
+    { id: 'clean-dev', name: 'Clean Dev' },
+  ],
+}
 
 const github: GithubData = {
   profile: {
@@ -63,6 +74,17 @@ test('typing a template name selects it', () => {
   const state = run([say('portfolio please'), say('the bento one')])
   expect(state.portfolio?.template).toBe('bento')
   expect(state.step).toBe('github')
+  expect(run([say('portfolio'), say('Clean Dev please')]).portfolio?.template).toBe('clean-dev')
+})
+
+test('template names come from the catalog', () => {
+  const state = run([say('portfolio'), { type: 'select-template', template: 'clean-dev' }])
+  expect(state.messages.at(-2)?.text).toBe('Use the Clean Dev template')
+  expect(last(state).text).toMatch(/^Clean Dev it is\./)
+
+  const noCatalog = { ...ctx, templates: [] }
+  const atTemplate = reduceConversation(initialConversation(), say('portfolio'), noCatalog)
+  expect(reduceConversation(atTemplate, say('bento'), noCatalog).step).toBe('template')
 })
 
 test('off-topic intent and invalid answers re-ask without advancing', () => {
