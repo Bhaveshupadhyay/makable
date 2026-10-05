@@ -17,6 +17,10 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 *.iml
+
+# Private: kept locally, never pushed
+/CLAUDE.md
+/docs/
 .DS_Store
 *.suo
 *.ntvs*
