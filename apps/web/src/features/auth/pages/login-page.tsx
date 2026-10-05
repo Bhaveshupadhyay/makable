@@ -4,11 +4,7 @@ import { Button } from '@/shared/ui/button'
 import { GithubIcon } from '@/shared/ui/github-icon'
 import { loginWithGithub } from '../api/session'
 import { useSession } from '../hooks/use-session'
-
-/** Only same-origin paths, so `returnTo` can't be used as an open redirect. */
-function safeReturnTo(value: string | null) {
-  return value?.startsWith('/') && !value.startsWith('//') ? value : '/'
-}
+import { safeReturnTo } from '../lib/safe-return-to'
 
 export function LoginPage() {
   const { data: user, isPending } = useSession()
