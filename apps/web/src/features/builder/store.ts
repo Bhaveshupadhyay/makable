@@ -21,6 +21,8 @@ type BuilderState = {
   reset: (login: string | null) => void
 }
 
+const STORAGE_KEY = 'makable:builder'
+
 export const useBuilderStore = create<BuilderState>()(
   persist(
     (set) => ({
@@ -33,6 +35,14 @@ export const useBuilderStore = create<BuilderState>()(
       claim: (login) => set({ login }),
       reset: (login) => set({ login, conversation: initialConversation(), aiMode: false }),
     }),
-    { name: 'makable:builder', version: 1, partialize: ({ login, conversation }) => ({ login, conversation }) },
+    { name: STORAGE_KEY, version: 1, partialize: ({ login, conversation }) => ({ login, conversation }) },
   ),
 )
+
+// Every tab persists its own snapshot to the same key, so a tab left open would overwrite newer
+// work from another tab on its next change. Reload whenever another tab writes.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === STORAGE_KEY) void useBuilderStore.persist.rehydrate()
+  })
+}

@@ -1,4 +1,4 @@
-import type { AiEditRequest, AiEditTarget, TemplateEntry } from '@makable/shared'
+import { type AiEditRequest, type AiEditTarget, MAX_INSTRUCTION, type TemplateEntry } from '@makable/shared'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { type AiEditResponse, sendAiEdit } from '../api/ai-edit'
@@ -16,14 +16,18 @@ type UseAiEditOptions = {
 export function useAiEdit({ template, files, onSent }: UseAiEditOptions) {
   const [last, setLast] = useState<{ request: AiEditRequest; response: AiEditResponse } | null>(null)
   const mutation = useMutation({ mutationFn: sendAiEdit })
+  // Set when the request fails validation before sending, so Send never silently does nothing.
+  const [invalid, setInvalid] = useState<string | null>(null)
 
   function send(instruction: string, target: AiEditTarget | null, onDone?: () => void) {
     let request: AiEditRequest
     try {
       request = buildAiEditRequest({ instruction, target, template, files })
     } catch {
+      setInvalid(`This request can't be sent. Keep the instruction under ${MAX_INSTRUCTION} characters.`)
       return
     }
+    setInvalid(null)
     mutation.mutate(request, {
       onSuccess: (response) => {
         setLast({ request, response })
@@ -37,6 +41,7 @@ export function useAiEdit({ template, files, onSent }: UseAiEditOptions) {
     send,
     pending: mutation.isPending,
     error: mutation.error,
+    invalid,
     last,
     closeLast: () => setLast(null),
   }

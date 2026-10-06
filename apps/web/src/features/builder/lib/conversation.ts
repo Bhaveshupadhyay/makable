@@ -125,7 +125,8 @@ function firstDraft(template: TemplateId, { user }: ChatContext): Portfolio {
       location: '',
       avatarUrl: user?.avatarUrl ?? '',
     },
-    links: { github: `https://github.com/${user?.login ?? ''}`, linkedin: '', x: '', website: '', email: '' },
+    // Guests get no GitHub link until the lookup finds their profile.
+    links: { github: user ? `https://github.com/${user.login}` : '', linkedin: '', x: '', website: '', email: '' },
     skills: [],
     projects: [],
     template,
@@ -166,6 +167,16 @@ function requestAiEdit(state: Conversation, ctx: ChatContext, text: string): Con
     })
   }
   return reply(s, `${AI_HOWTO}${resumeStep(state, ctx)}`, { replies })
+}
+
+/**
+ * Whether `text` from the chat is an AI edit request: the "Edit with AI" reply (any casing), or
+ * anything said after the guided steps that isn't a template switch. The caller opens AI mode for it.
+ */
+export function isAiRequest(state: Conversation, text: string): boolean {
+  const t = text.trim()
+  if (!t || !state.portfolio || state.step === 'github-loading') return false
+  return t.toLowerCase() === AI_EDIT.toLowerCase() || (state.step === 'done' && !CHANGE_TEMPLATE.test(t))
 }
 
 /** Repeats the open question after a detour, so the guided flow carries on. */

@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { GithubData } from '../api/github'
-import { AI_EDIT, type ChatContext, type ChatEvent, type Conversation, initialConversation, reduceConversation } from './conversation'
+import { portfolioSchema } from '@makable/shared'
+import { AI_EDIT, type ChatContext, type ChatEvent, type Conversation, initialConversation, isAiRequest, reduceConversation } from './conversation'
 
 const ctx: ChatContext = {
   user: { login: 'octocat', name: 'The Octocat', avatarUrl: 'https://avatars.example/octocat.png' },
@@ -129,6 +130,9 @@ test('guests can build a portfolio without signing in', () => {
   const atGithub = runAsGuest([say('portfolio'), { type: 'select-template', template: 'minimal' }])
   expect(atGithub.step).toBe('github')
   expect(atGithub.portfolio?.profile.name).toBe('Your name')
+  // No GitHub link until the lookup, and the draft is still valid content.
+  expect(atGithub.portfolio?.links.github).toBe('')
+  expect(portfolioSchema.safeParse(atGithub.portfolio).success).toBe(true)
   expect(last(atGithub).replies).toEqual([AI_EDIT])
 
   const done = runAsGuest(finish)
@@ -210,4 +214,16 @@ test('sent AI requests are logged in the chat without moving the flow', () => {
   expect(last(sent).replies).toEqual(['Skip', AI_EDIT])
   const start = initialConversation()
   expect(run([{ type: 'ai-sent', instruction: 'x', target: null }], start)).toBe(start)
+})
+
+test('isAiRequest matches what the reducer treats as an AI request', () => {
+  const atBio = run([say('portfolio'), { type: 'select-template', template: 'minimal' }, say('octocat'), { type: 'github-loaded', data: github }, say('Engineer')])
+  expect(isAiRequest(initialConversation(), AI_EDIT)).toBe(false)
+  expect(isAiRequest(atBio, '  edit WITH ai ')).toBe(true)
+  expect(isAiRequest(atBio, 'I write compilers')).toBe(false)
+
+  const done = run(finish)
+  expect(isAiRequest(done, 'Make the header blue')).toBe(true)
+  expect(isAiRequest(done, 'change template')).toBe(false)
+  expect(isAiRequest({ ...done, step: 'github-loading' }, AI_EDIT)).toBe(false)
 })

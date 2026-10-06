@@ -26,12 +26,19 @@ function devAiEdit(): Plugin {
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(body))
         }
+        // Past the limit, keep draining without buffering, so the client gets a 413 instead of a reset.
         let raw = ''
+        let tooLarge = false
         req.on('data', (chunk) => {
+          if (tooLarge) return
           raw += chunk
-          if (raw.length > MAX_BODY) req.destroy()
+          if (raw.length > MAX_BODY) {
+            tooLarge = true
+            raw = ''
+          }
         })
         req.on('end', () => {
+          if (tooLarge) return send(413, { error: 'Request too large' })
           let json: unknown
           try {
             json = JSON.parse(raw)

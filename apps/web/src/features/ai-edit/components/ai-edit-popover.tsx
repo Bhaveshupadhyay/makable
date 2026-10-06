@@ -1,4 +1,4 @@
-import type { AiEditTarget } from '@makable/shared'
+import { type AiEditTarget, MAX_INSTRUCTION } from '@makable/shared'
 import { ArrowUp, Crosshair, LoaderCircle, X } from 'lucide-react'
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { useElementSize } from '@/shared/hooks/use-element-size'
@@ -25,6 +25,11 @@ export function AiEditPopover({ ai, target, anchor, onClear }: AiEditPopoverProp
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const bounds = useElementSize(overlayRef)
   const [text, setText] = useState('')
+  // The latest selection, for the send callback: the user may pick another element while it's pending.
+  const targetRef = useRef(target)
+  useEffect(() => {
+    targetRef.current = target
+  }, [target])
 
   // A click in the preview picks the element; typing should follow without another click.
   useEffect(() => {
@@ -36,9 +41,11 @@ export function AiEditPopover({ ai, target, anchor, onClear }: AiEditPopoverProp
   function submit(e?: FormEvent) {
     e?.preventDefault()
     if (!text.trim() || ai.pending) return
+    const sent = { text, target }
+    // Only clear what was sent: a new selection or draft made while waiting stays.
     ai.send(text, target, () => {
-      setText('')
-      onClear()
+      setText((current) => (current === sent.text ? '' : current))
+      if (targetRef.current === sent.target) onClear()
     })
   }
 
@@ -74,6 +81,7 @@ export function AiEditPopover({ ai, target, anchor, onClear }: AiEditPopoverProp
               aria-label="Ask AI to make changes"
               rows={1}
               value={text}
+              maxLength={MAX_INSTRUCTION}
               placeholder="Ask AI to make changes"
               onChange={(e) => setText(e.target.value)}
               onKeyDown={onKeyDown}
@@ -83,6 +91,11 @@ export function AiEditPopover({ ai, target, anchor, onClear }: AiEditPopoverProp
               {ai.pending ? <LoaderCircle className="animate-spin" /> : <ArrowUp />}
             </Button>
           </div>
+          {ai.invalid && (
+            <p role="alert" className="px-1 text-xs text-destructive">
+              {ai.invalid}
+            </p>
+          )}
           {ai.error && (
             <p role="alert" className="px-1 text-xs text-destructive">
               Couldn't reach the AI service. {ai.error.message}

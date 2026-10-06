@@ -4,7 +4,7 @@ import { useEffect, useMemo } from 'react'
 import { useSession } from '@/features/auth'
 import { useTemplateCatalog } from '@/features/templates'
 import { fetchGithubData } from '../api/github'
-import { AI_EDIT, type ChatContext, initialConversation } from '../lib/conversation'
+import { type ChatContext, initialConversation, isAiRequest } from '../lib/conversation'
 import { useBuilderStore } from '../store'
 
 /** The builder conversation for the current visitor (signed in or guest), plus the side effects it asks for. */
@@ -74,7 +74,7 @@ export function useBuilder() {
     busy: conversation.step === 'github-loading',
     send: (text: string) => {
       if (!ctx) return
-      if (ctx.user && conversation.portfolio && text === AI_EDIT) setAiMode(true)
+      if (ctx.user && isAiRequest(conversation, text)) setAiMode(true)
       dispatch({ type: 'user-text', text }, ctx)
     },
     selectTemplate: (template: TemplateId) => ctx && dispatch({ type: 'select-template', template }, ctx),
