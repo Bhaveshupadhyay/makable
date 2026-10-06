@@ -2,7 +2,7 @@ import { Sparkles } from 'lucide-react'
 import { Link, Outlet } from 'react-router'
 import { UserMenu } from '@/features/auth'
 
-/** Shell for signed-in screens. */
+/** App shell. The user menu shows only once GitHub is connected. */
 export function AppLayout() {
   return (
     <div className="flex min-h-svh flex-col">

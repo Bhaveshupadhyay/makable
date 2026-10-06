@@ -1,5 +1,4 @@
-export { RequireAuth } from './components/require-auth'
+export { loginWithGithub } from './api/session'
 export { UserMenu } from './components/user-menu'
 export { useLogout, useSession } from './hooks/use-session'
-export { LoginPage } from './pages/login-page'
 export type { SessionUser } from './types'

@@ -14,7 +14,7 @@ export type ChatMessage = {
   role: 'user' | 'assistant'
   text: string
   /** Inline UI rendered under the text. */
-  widget?: 'template-picker'
+  widget?: 'template-picker' | 'connect-github'
   /** Quick replies. Only the latest message's are offered. */
   replies?: string[]
 }
@@ -26,6 +26,8 @@ export type Conversation = {
   portfolio: Portfolio | null
   /** The GitHub login being looked up while `step` is `github-loading`. */
   githubLogin?: string
+  /** A guest asked for an AI feature and was asked to connect GitHub. */
+  awaitingSignIn?: boolean
 }
 
 export type ChatEvent =
@@ -33,14 +35,22 @@ export type ChatEvent =
   | { type: 'select-template'; template: TemplateId }
   | { type: 'github-loaded'; data: GithubData }
   | { type: 'github-failed'; login: string }
+  /** GitHub got connected while `awaitingSignIn`. */
+  | { type: 'signed-in' }
+  /** The "Edit with AI" button outside the chat (preview toolbar). */
+  | { type: 'ai-edit' }
+  /** An AI edit request went out from the box under the preview. `target` labels the selected element. */
+  | { type: 'ai-sent'; instruction: string; target: string | null }
 
 export type TemplateOption = { id: TemplateId; name: string }
 
+export type ChatUser = { login: string; name: string | null; avatarUrl: string }
+
 /**
- * The signed-in user, used for first-draft content before GitHub is looked up,
- * and the published templates (empty until the catalog loads).
+ * The signed-in user (null for a guest), used for first-draft content before GitHub
+ * is looked up, and the published templates (empty until the catalog loads).
  */
-export type ChatContext = { login: string; name: string | null; avatarUrl: string; templates: readonly TemplateOption[] }
+export type ChatContext = { user: ChatUser | null; templates: readonly TemplateOption[] }
 
 const id = () => crypto.randomUUID()
 const user = (text: string): ChatMessage => ({ id: id(), role: 'user', text })
@@ -48,6 +58,10 @@ const assistant = (text: string, extra: Partial<ChatMessage> = {}): ChatMessage 
 
 const WANTS_PORTFOLIO = /\b(portfolio|site|website|cv|resume|yes|yeah|sure|ok|okay|start)\b/i
 const LINK_LABELS = { linkedin: 'LinkedIn', x: 'X', website: 'your website' } as const
+/** Quick reply and toolbar label for AI edits. Offered at every step once the preview is open. */
+export const AI_EDIT = 'Edit with AI'
+const AI_HOWTO = 'Click the part of the preview you want to change, then describe the change in the box under the preview.'
+const CONNECT_GITHUB = "AI edits run on your GitHub account, so connect it first. Everything you've built so far stays here."
 const CHANGE_TEMPLATE = /\b(change|switch|another|different|show)\b.*\b(template|design|look|theme)s?\b|^templates?$/i
 
 export function initialConversation(): Conversation {
@@ -71,28 +85,29 @@ export function promptFor(step: Step, portfolio: Portfolio | null, ctx: ChatCont
       })
     case 'github':
       return assistant("What's your GitHub username? I'll pull in your profile and top repositories.", {
-        replies: [`@${ctx.login}`],
+        replies: ctx.user ? [`@${ctx.user.login}`, AI_EDIT] : [AI_EDIT],
       })
     case 'headline':
       return assistant(
         'What do you do? This becomes the headline under your name, e.g. “Full-stack engineer building developer tools”.',
+        { replies: [AI_EDIT] },
       )
     case 'bio':
       return portfolio?.profile.bio
-        ? assistant('I used the bio from your GitHub profile. Send a new one to replace it, or keep it.', { replies: ['Keep it'] })
-        : assistant('Tell me a little about yourself in a sentence or two. It goes in the About section.', { replies: ['Skip'] })
+        ? assistant('I used the bio from your GitHub profile. Send a new one to replace it, or keep it.', { replies: ['Keep it', AI_EDIT] })
+        : assistant('Tell me a little about yourself in a sentence or two. It goes in the About section.', { replies: ['Skip', AI_EDIT] })
     case 'email':
       return assistant('Which email should visitors use to contact you?', {
-        replies: portfolio?.links.email ? [portfolio.links.email, 'Skip'] : ['Skip'],
+        replies: portfolio?.links.email ? [portfolio.links.email, 'Skip', AI_EDIT] : ['Skip', AI_EDIT],
       })
     case 'links':
       return assistant('Any other links to show? Paste your LinkedIn, X or personal site, all in one message.', {
-        replies: ['Skip'],
+        replies: ['Skip', AI_EDIT],
       })
     case 'done':
       return assistant(
         'Your portfolio is ready. Click any text in the preview to edit it, or pick a different template anytime.',
-        { replies: ['Change template'] },
+        { replies: [AI_EDIT, 'Change template'] },
       )
     case 'intent':
     case 'github-loading':
@@ -100,10 +115,17 @@ export function promptFor(step: Step, portfolio: Portfolio | null, ctx: ChatCont
   }
 }
 
-function firstDraft(template: TemplateId, ctx: ChatContext): Portfolio {
+/** Placeholder content until the GitHub step fills it in. Guests get generic values. */
+function firstDraft(template: TemplateId, { user }: ChatContext): Portfolio {
   return {
-    profile: { name: ctx.name ?? ctx.login, headline: 'Software developer', bio: '', location: '', avatarUrl: ctx.avatarUrl },
-    links: { github: `https://github.com/${ctx.login}`, linkedin: '', x: '', website: '', email: '' },
+    profile: {
+      name: user ? (user.name ?? user.login) : 'Your name',
+      headline: 'Software developer',
+      bio: '',
+      location: '',
+      avatarUrl: user?.avatarUrl ?? '',
+    },
+    links: { github: `https://github.com/${user?.login ?? ''}`, linkedin: '', x: '', website: '', email: '' },
     skills: [],
     projects: [],
     template,
@@ -125,6 +147,30 @@ function reply(state: Conversation, text: string, extra?: Partial<ChatMessage>):
 /** Re-asks the current step after an answer that didn't fit, keeping its quick replies. */
 function reask(state: Conversation, ctx: ChatContext, text: string): Conversation {
   return reply(state, text, { replies: promptFor(state.step, state.portfolio, ctx).replies })
+}
+
+/**
+ * An AI edit request, from any step after the preview opens. Guests are asked to connect GitHub.
+ * Signed-in users are told how to use the AI box (the caller opens it). Either way the current
+ * step's question stays open.
+ */
+function requestAiEdit(state: Conversation, ctx: ChatContext, text: string): Conversation {
+  // Repeated button clicks shouldn't stack up sign-in prompts. Typed requests are always kept.
+  if (!ctx.user && text === AI_EDIT && state.messages.at(-1)?.widget === 'connect-github') return state
+  const s = { ...state, messages: [...state.messages, user(text)] }
+  const { replies } = promptFor(state.step, state.portfolio, ctx)
+  if (!ctx.user) {
+    return reply({ ...s, awaitingSignIn: true }, CONNECT_GITHUB, {
+      widget: 'connect-github',
+      replies: replies?.filter((r) => r !== AI_EDIT),
+    })
+  }
+  return reply(s, `${AI_HOWTO}${resumeStep(state, ctx)}`, { replies })
+}
+
+/** Repeats the open question after a detour, so the guided flow carries on. */
+function resumeStep(state: Conversation, ctx: ChatContext): string {
+  return state.step === 'done' ? '' : ` Meanwhile: ${promptFor(state.step, state.portfolio, ctx).text}`
 }
 
 function matchTemplate(text: string, templates: readonly TemplateOption[]): TemplateId | undefined {
@@ -159,9 +205,33 @@ export function reduceConversation(state: Conversation, event: ChatEvent, ctx: C
       return reask({ ...state, step: 'github', githubLogin: undefined }, ctx, `I couldn't load @${event.login} from GitHub. Check the spelling and try again.`)
     }
 
+    case 'signed-in': {
+      if (!state.awaitingSignIn || !ctx.user) return state
+      const resumed = { ...state, awaitingSignIn: false }
+      return reply(resumed, `Connected as @${ctx.user.login}. ${AI_HOWTO}${resumeStep(resumed, ctx)}`, {
+        replies: promptFor(state.step, state.portfolio, ctx).replies,
+      })
+    }
+
+    case 'ai-sent': {
+      if (!state.portfolio) return state
+      const context = event.target ? ` with “${event.target}” as context` : ''
+      return reply(
+        { ...state, messages: [...state.messages, user(event.instruction)] },
+        `Sent to the AI${context}. It can't apply changes yet, so the preview stays the same. The panel under the preview shows exactly what it received.`,
+        { replies: promptFor(state.step, state.portfolio, ctx).replies },
+      )
+    }
+
+    case 'ai-edit': {
+      if (!state.portfolio || state.step === 'github-loading') return state
+      return requestAiEdit(state, ctx, AI_EDIT)
+    }
+
     case 'user-text': {
       const text = event.text.trim()
       if (!text || state.step === 'github-loading') return state
+      if (state.portfolio && text.toLowerCase() === AI_EDIT.toLowerCase()) return requestAiEdit(state, ctx, AI_EDIT)
       const s = { ...state, messages: [...state.messages, user(text)] }
 
       if (state.portfolio && CHANGE_TEMPLATE.test(text)) {
@@ -211,12 +281,9 @@ export function reduceConversation(state: Conversation, event: ChatEvent, ctx: C
           return advance(s, ctx, 'done', { portfolio: withLinks(s.portfolio!, links) }, `Added ${found.join(', ')}.`)
         }
 
+        // Anything said after the guided steps is a request for the AI agent, which needs GitHub.
         case 'done':
-          return reply(
-            s,
-            "Soon you'll be able to ask me for changes like that. For now, click any text in the preview to edit it, or change the template.",
-            { replies: ['Change template'] },
-          )
+          return requestAiEdit(state, ctx, text)
       }
     }
   }

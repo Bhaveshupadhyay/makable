@@ -5,6 +5,7 @@ import { Button } from '@/shared/ui/button'
 import type { Builder } from '../hooks/use-builder'
 import { ChatMessage } from './chat-message'
 import { Composer } from './composer'
+import { ConnectGithub } from './connect-github'
 import { TemplatePicker } from './template-picker'
 
 /** The conversation: messages with inline widgets and quick replies, and the composer. */
@@ -42,6 +43,7 @@ export function ChatPanel({ builder, className }: { builder: Builder; className?
               {message.widget === 'template-picker' && (
                 <TemplatePicker selected={portfolio?.template} onSelect={selectTemplate} disabled={busy} />
               )}
+              {message.widget === 'connect-github' && <ConnectGithub />}
               {message === latest && !busy && message.replies && message.replies.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {message.replies.map((reply) => (

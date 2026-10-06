@@ -1,7 +1,7 @@
-import type { Portfolio } from '@makable/shared'
+import type { AiEditTarget, Portfolio } from '@makable/shared'
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 import { applyContentEdit } from '../lib/apply-content-edit'
-import { HOST_SOURCE, type HostMessage, parseShimMessage } from '../protocol'
+import { type ElementRect, HOST_SOURCE, type HostMessage, parseShimMessage, type ShimMode } from '../protocol'
 
 const MAX_HISTORY = 100
 
@@ -10,11 +10,28 @@ type UseVisualEditOptions = {
   iframeRef: RefObject<HTMLIFrameElement | null>
   portfolio: Portfolio
   onChange: (portfolio: Portfolio) => void
+  /** Select mode for AI edits: clicks pick an element instead of editing text. Owned by the caller. */
+  selecting?: boolean
+  /** Called when the user turns text editing on, so the caller can leave select mode. */
+  onTextMode?: () => void
 }
 
-/** Edit mode, inline text edits from the preview iframe, and undo/redo. */
-export function useVisualEdit({ iframeRef, portfolio, onChange }: UseVisualEditOptions) {
-  const [enabled, setEnabled] = useState(false)
+/** Edit mode, inline text edits from the preview iframe, undo/redo, and element selection for AI edits. */
+export function useVisualEdit({ iframeRef, portfolio, onChange, selecting = false, onTextMode }: UseVisualEditOptions) {
+  const [textMode, setTextMode] = useState(false)
+  const [selection, setSelection] = useState<AiEditTarget | null>(null)
+  const [selectionRect, setSelectionRect] = useState<ElementRect | null>(null)
+  const enabled = textMode && !selecting
+  const mode: ShimMode = selecting ? 'select' : enabled ? 'text' : 'off'
+  // On a mode change, entering select mode ends text editing (it doesn't come back on its own),
+  // and any selection is dropped: the shim clears its own when it leaves select mode.
+  const [prevMode, setPrevMode] = useState(mode)
+  if (mode !== prevMode) {
+    setPrevMode(mode)
+    if (selecting) setTextMode(false)
+    setSelection(null)
+    setSelectionRect(null)
+  }
   const [error, setError] = useState<string | null>(null)
   const [history, setHistory] = useState<{ past: Portfolio[]; future: Portfolio[] }>({ past: [], future: [] })
 
@@ -59,7 +76,7 @@ export function useVisualEdit({ iframeRef, portfolio, onChange }: UseVisualEditO
   // Shim messaging. The shim announces `ready` on every page load, and we answer with the mode.
   useEffect(() => {
     const sendMode = () => {
-      const msg: HostMessage = { source: HOST_SOURCE, type: 'mode', enabled }
+      const msg: HostMessage = { source: HOST_SOURCE, type: 'mode', mode }
       iframeRef.current?.contentWindow?.postMessage(msg, '*')
     }
     sendMode()
@@ -68,7 +85,17 @@ export function useVisualEdit({ iframeRef, portfolio, onChange }: UseVisualEditO
       if (event.source !== iframeRef.current?.contentWindow) return
       const msg = parseShimMessage(event.data)
       if (!msg) return
-      if (msg.type === 'ready') return sendMode()
+      if (msg.type === 'ready') {
+        // A reload (static templates reload on every change) loses the shim's selection.
+        setSelection(null)
+        setSelectionRect(null)
+        return sendMode()
+      }
+      if (msg.type === 'select') {
+        setSelection(msg.target)
+        return setSelectionRect(msg.rect)
+      }
+      if (msg.type === 'rect') return setSelectionRect(msg.rect)
       const result = applyContentEdit(latest.current.portfolio, msg.path, msg.value)
       if (result.ok) {
         setError(null)
@@ -79,7 +106,7 @@ export function useVisualEdit({ iframeRef, portfolio, onChange }: UseVisualEditO
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [iframeRef, enabled, commit])
+  }, [iframeRef, mode, commit])
 
   // Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z while focus is in the builder (not in a text field).
   useEffect(() => {
@@ -102,9 +129,25 @@ export function useVisualEdit({ iframeRef, portfolio, onChange }: UseVisualEditO
     return () => clearTimeout(timer)
   }, [error])
 
+  const clearSelection = useCallback(() => {
+    setSelection(null)
+    setSelectionRect(null)
+    const msg: HostMessage = { source: HOST_SOURCE, type: 'clear-selection' }
+    iframeRef.current?.contentWindow?.postMessage(msg, '*')
+  }, [iframeRef])
+
   return {
     enabled,
-    toggle: () => setEnabled((value) => !value),
+    toggle: () => {
+      if (enabled) return setTextMode(false)
+      setTextMode(true)
+      onTextMode?.()
+    },
+    /** The element picked in select mode, as the page described it (validated). */
+    selection,
+    /** Where the selection is in the preview page's viewport, kept current as it scrolls. */
+    selectionRect,
+    clearSelection,
     error,
     canUndo: history.past.length > 0,
     canRedo: history.future.length > 0,
