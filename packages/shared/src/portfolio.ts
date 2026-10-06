@@ -34,7 +34,8 @@ export const portfolioSchema = z.object({
     avatarUrl: optionalUrl,
   }),
   links: z.object({
-    github: httpUrl,
+    // Empty for a guest until their GitHub profile is looked up.
+    github: optionalUrl,
     linkedin: optionalUrl,
     x: optionalUrl,
     website: optionalUrl,

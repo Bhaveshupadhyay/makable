@@ -1,12 +1,10 @@
 import { LogOut } from 'lucide-react'
-import { useNavigate } from 'react-router'
 import { Button } from '@/shared/ui/button'
 import { useLogout, useSession } from '../hooks/use-session'
 
 export function UserMenu() {
   const { data: user } = useSession()
   const logout = useLogout()
-  const navigate = useNavigate()
 
   if (!user) return null
 
@@ -19,7 +17,7 @@ export function UserMenu() {
         size="icon"
         aria-label="Sign out"
         disabled={logout.isPending}
-        onClick={() => logout.mutate(undefined, { onSuccess: () => navigate('/login') })}
+        onClick={() => logout.mutate()}
       >
         <LogOut />
       </Button>

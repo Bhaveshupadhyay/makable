@@ -1,6 +1,6 @@
 ---
 name: verify-web
-description: Run the makable builder SPA in a headless browser and smoke-test the real UI (login → chat builder → Sandpack preview → visual edits) with mock auth. Use after UI changes in apps/web or the portfolio template, before reporting a feature as done.
+description: Run the makable builder SPA in a headless browser and smoke-test the real UI (guest chat → Sandpack preview → connect GitHub from the chat → visual edits) with mock auth. Use after UI changes in apps/web or the portfolio template, before reporting a feature as done.
 ---
 
 # Smoke-test the builder UI in headless Chromium
@@ -18,7 +18,7 @@ Playwright's Chromium is already cached at `~/Library/Caches/ms-playwright/chrom
    cp <repo>/.claude/skills/verify-web/smoke.mjs .
    ```
 3. **Run it:** `bun smoke.mjs` (env: `BASE_URL`, default `http://localhost:5199`; `OUT_DIR` for screenshots, default cwd). It prints each step and exits non-zero on failure or on any page/console error.
-4. **Look at the screenshots** it writes (`login.png`, `chat-start.png`, `builder.png`, `builder-static.png`, `builder-remote-assets.png`, `builder-mobile.png`) with the Read tool. Check the layout, not just the assertions.
+4. **Look at the screenshots** it writes (`chat-start.png`, `connect-github.png`, `ai-edit-popover.png`, `ai-edit.png`, `builder.png`, `builder-static.png`, `builder-remote-assets.png`, `builder-mobile.png`) with the Read tool. Check the layout, not just the assertions.
 5. **Stop the server:** `pkill -f 'vite --port 5199'`.
 
 When a feature adds a new flow, extend `smoke.mjs` here, rather than writing a one-off script.

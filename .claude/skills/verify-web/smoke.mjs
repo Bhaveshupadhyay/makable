@@ -62,13 +62,11 @@ async function expectVisualEdit(page, frame, label) {
 const shot = (name, fullPage = false) => page.screenshot({ path: join(OUT_DIR, name), fullPage })
 
 try {
-  // auth: unauthenticated → /login → mock sign-in
-  await page.goto(BASE_URL)
-  await page.waitForURL(/\/login/)
-  await shot('login.png')
-  await page.getByRole('button', { name: 'Continue with GitHub' }).click()
-  await page.waitForURL((url) => !url.pathname.startsWith('/login'))
-  console.log('✓ auth: redirected to login and signed in')
+  // guest: the chat is the first page, no sign-in wall (old /login links land there too)
+  await page.goto(`${BASE_URL}/login`)
+  await page.waitForURL((url) => url.pathname === '/')
+  if (await page.getByRole('button', { name: 'Sign out' }).count()) throw new Error('expected a guest session')
+  console.log('✓ auth: guests land on the chat without signing in')
 
   // chat: start from a clean conversation
   const startOver = page.getByRole('button', { name: 'Start over' })
@@ -99,8 +97,17 @@ try {
   // details, one question at a time
   await say('not a valid username!')
   await assistantSays("doesn't look like a GitHub username")
-  await page.getByRole('button', { name: '@octocat' }).click()
+  // Guests get no @login quick reply, so type it.
+  await say('@octocat')
   await assistantSays('Found you')
+  // "Edit with AI" is in the chat's quick replies (first) and the preview toolbar (last).
+  const aiEditChat = () => page.getByRole('button', { name: 'Edit with AI' }).first()
+  const aiEditToolbar = page.getByRole('button', { name: 'Edit with AI' }).last()
+  if ((await page.getByRole('button', { name: 'Edit with AI' }).count()) !== 2) throw new Error('expected Edit with AI in the chat and the toolbar')
+  // Mid-flow from the toolbar: guests are asked to connect GitHub, and the headline question stays open.
+  await aiEditToolbar.click()
+  await assistantSays('connect it first')
+  console.log('✓ AI edit: toolbar button asks a guest to connect GitHub mid-flow')
   await say('Smoke test headline')
   await frame.getByText('Smoke test headline').waitFor({ timeout: 30000 })
   await page.getByRole('button', { name: /^(Keep it|Skip)$/ }).click()
@@ -111,6 +118,64 @@ try {
   await assistantSays('Your portfolio is ready')
   await frame.getByText('smoke@example.com').waitFor({ timeout: 30000 })
   console.log('✓ chat: GitHub lookup, headline, bio, email, links (with re-asks on bad input)')
+
+  // AI features need GitHub: the chat asks to connect, and the conversation survives the sign-in redirect
+  await aiEditChat().click()
+  await assistantSays('connect it first')
+  const connect = page.getByRole('button', { name: 'Connect GitHub' }).last()
+  await connect.scrollIntoViewIfNeeded()
+  await shot('connect-github.png')
+  await connect.click()
+  await assistantSays('Connected as @octocat')
+  await page.getByRole('button', { name: 'Sign out' }).waitFor()
+  await frame.getByText('Smoke test headline').waitFor({ timeout: 60000 })
+  console.log('✓ auth: connect GitHub from the chat, conversation and preview kept')
+
+  // AI edit: signing in from the AI prompt turns AI mode on; clicking a skill opens the AI box next to it
+  const aiBox = page.getByRole('textbox', { name: 'Ask AI to make changes' })
+  const popover = page.getByRole('form', { name: 'Ask AI' })
+  await page.getByText('Click anything in the preview to change it with AI').waitFor()
+  const chip = frame.locator('[data-content="skills.0"]')
+  await chip.click()
+  await page.getByText(/› skills\.0/).waitFor()
+  const near = async () => {
+    const [el, box] = [await chip.boundingBox(), await popover.boundingBox()]
+    const gap = box.y >= el.y ? box.y - (el.y + el.height) : el.y - (box.y + box.height)
+    if (gap < 0 || gap > 20) throw new Error(`AI box should sit next to the selected element (gap ${gap}px)`)
+    return box.y
+  }
+  const before = await near()
+  if (!(await aiBox.evaluate((el) => el === document.activeElement))) throw new Error('AI box should take focus after a selection')
+  // It follows the element when the preview scrolls.
+  await frame.locator('html').evaluate(() => window.scrollBy(0, 80))
+  await page.waitForTimeout(300)
+  if (Math.abs((await near()) - before) < 40) throw new Error('AI box did not follow the element on scroll')
+  console.log('✓ AI edit: box opens next to the selected element, focused, and follows it on scroll')
+  await aiBox.fill('Remove the skills section')
+  await shot('ai-edit-popover.png')
+  await aiBox.press('Enter')
+  const sent = page.getByRole('region', { name: 'AI request' })
+  await sent.waitFor({ timeout: 30000 })
+  const prompt = await sent.textContent()
+  for (const expected of [
+    '<instruction>\nRemove the skills section',
+    '- Inside: <section id="skills">',
+    '- Content: skills.0 in src/content/portfolio.ts',
+    '<file path="src/components/Skills.tsx"',
+    'renders <Skills>',
+  ]) {
+    if (!prompt.includes(expected)) throw new Error(`AI prompt is missing ${JSON.stringify(expected)}`)
+  }
+  // The system prompt stays on the server: the browser never sends it or gets it back.
+  if (prompt.includes('You edit a developer')) throw new Error('the system prompt reached the browser')
+  await assistantSays('as context')
+  await shot('ai-edit.png')
+  // Sending closes the box (the selection is used up); the preview didn't change; leaving AI mode closes the inspector.
+  await aiBox.waitFor({ state: 'detached' })
+  await chip.waitFor()
+  await aiEditToolbar.click()
+  await sent.waitFor({ state: 'detached' })
+  console.log('✓ AI edit: selected element, instruction and source files sent; prompt built by the dev endpoint')
   await expectEditable(frame, 'React')
   await expectVisualEdit(page, frame, 'React')
   const title = await frame.locator('html').evaluate(() => document.title)
@@ -157,16 +222,24 @@ try {
   const thumbs = picker.locator('img')
   await thumbs.first().evaluate((img) => img.decode())
   // The chat shows a short list of 6 (plus the current template if it's further down).
+  // With 6 or fewer templates there's nothing to expand.
   const shortlist = await thumbs.count()
   const showAll = page.getByRole('button', { name: /^Show all \d+ templates$/ }).last()
-  const total = Number((await showAll.textContent()).match(/\d+/)[0])
-  if (shortlist !== 6 || total <= 6) throw new Error(`expected a short list of 6 of ${total}, got ${shortlist}`)
-  await showAll.click()
-  if ((await thumbs.count()) !== total) throw new Error(`Show all should list ${total} templates, got ${await thumbs.count()}`)
-  console.log(`✓ picker: ${shortlist} of ${total} catalog templates, then Show all`)
+  if (await showAll.count()) {
+    const total = Number((await showAll.textContent()).match(/\d+/)[0])
+    if (shortlist !== 6 || total <= 6) throw new Error(`expected a short list of 6 of ${total}, got ${shortlist}`)
+    await showAll.click()
+    if ((await thumbs.count()) !== total) throw new Error(`Show all should list ${total} templates, got ${await thumbs.count()}`)
+    console.log(`✓ picker: ${shortlist} of ${total} catalog templates, then Show all`)
+  } else {
+    if (shortlist > 6) throw new Error(`${shortlist} templates listed without a Show all toggle`)
+    console.log(`✓ picker: all ${shortlist} catalog templates, no Show all needed`)
+  }
   await page.getByRole('button', { name: 'Dopefolio template' }).last().click()
   const assets = frame.locator('img[src*="/makable-templates/"]')
   await assets.first().waitFor({ state: 'attached', timeout: 60000 })
+  // Static templates reload when their files change; check the images once the content has rendered.
+  await frame.getByText('static edited').first().waitFor({ timeout: 30000 })
   const broken = await assets.evaluateAll(async (imgs) => {
     await Promise.all(imgs.map((img) => img.decode().catch(() => {})))
     return imgs.filter((img) => !img.naturalWidth).map((img) => img.src)
@@ -192,10 +265,13 @@ try {
   if (await page.locator('iframe[title="Portfolio preview"]').count()) throw new Error('preview still open after start over')
   console.log('✓ chat: start over')
 
-  // sign out
+  // sign out: back to a fresh guest chat
+  await say('I want a portfolio')
+  await page.getByRole('group', { name: 'Templates' }).last().waitFor()
   await page.getByRole('button', { name: 'Sign out' }).click()
-  await page.waitForURL(/\/login/)
-  console.log('✓ auth: signed out')
+  await page.getByRole('button', { name: 'I want a portfolio' }).waitFor()
+  if (await page.getByRole('group', { name: 'Templates' }).count()) throw new Error("account's chat still shown after sign out")
+  console.log('✓ auth: signed out to a fresh guest chat')
 } catch (err) {
   console.error('✗', err.message)
   await shot('failure.png').catch(() => {})

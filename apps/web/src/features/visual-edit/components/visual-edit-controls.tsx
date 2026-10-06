@@ -17,11 +17,14 @@ export function VisualEditControls({ edit }: { edit: VisualEdit }) {
         variant={edit.enabled ? 'default' : 'outline'}
         size="sm"
         aria-pressed={edit.enabled}
+        aria-label="Edit text"
+        title="Edit text"
         onClick={edit.toggle}
         className={cn(!edit.enabled && 'text-muted-foreground')}
       >
         <PencilLine />
-        Edit text
+        {/* Icon-only on phones, so the toolbar fits beside the other actions. */}
+        <span className="hidden sm:inline">Edit text</span>
       </Button>
     </>
   )

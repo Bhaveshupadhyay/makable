@@ -1,4 +1,5 @@
 import { ApiError, apiFetch } from '@/shared/lib/api-client'
+import { safeReturnTo } from '../lib/safe-return-to'
 import type { SessionUser } from '../types'
 
 const MOCK_AUTH = import.meta.env.VITE_MOCK_AUTH === 'true'
@@ -11,7 +12,8 @@ const MOCK_USER: SessionUser = {
 }
 
 /** Starts the GitHub App OAuth flow. The Worker redirects back to `returnTo` when done. */
-export function loginWithGithub(returnTo = '/') {
+export function loginWithGithub(path = '/') {
+  const returnTo = safeReturnTo(path)
   if (MOCK_AUTH) {
     localStorage.setItem(MOCK_KEY, '1')
     window.location.assign(returnTo)

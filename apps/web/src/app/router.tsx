@@ -1,26 +1,21 @@
 import { Suspense } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router'
-import { LoginPage, RequireAuth } from '@/features/auth'
 import { AppLayout } from './layouts/app-layout'
 import { BuilderPage } from './lazy-pages'
 
+// No sign-in wall: the builder works for guests, and the chat asks them to connect
+// GitHub only when they reach a feature that needs it.
 export const router = createBrowserRouter([
-  { path: '/login', element: <LoginPage /> },
   {
-    element: <RequireAuth />,
+    element: <AppLayout />,
     children: [
       {
-        element: <AppLayout />,
-        children: [
-          {
-            index: true,
-            element: (
-              <Suspense>
-                <BuilderPage />
-              </Suspense>
-            ),
-          },
-        ],
+        index: true,
+        element: (
+          <Suspense>
+            <BuilderPage />
+          </Suspense>
+        ),
       },
     ],
   },
