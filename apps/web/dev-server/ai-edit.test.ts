@@ -94,11 +94,11 @@ test('a rejected answer is retried once with the error; the model can escalate',
 
 test('two bad answers or a failing model throw a ModelError', async () => {
   const bad = (() => reply('not json')) as unknown as typeof fetch
-  expect(runAiEdit(request, config, bad)).rejects.toBeInstanceOf(ModelError)
+  await expect(runAiEdit(request, config, bad)).rejects.toBeInstanceOf(ModelError)
   const down = (() => Promise.resolve(Response.json({ error: { message: 'nope' } }, { status: 502 }))) as unknown as typeof fetch
-  expect(runAiEdit(request, config, down)).rejects.toThrow('nope')
+  await expect(runAiEdit(request, config, down)).rejects.toThrow('nope')
   const offline = (() => Promise.reject(new Error('ECONNREFUSED'))) as unknown as typeof fetch
-  expect(runAiEdit(request, config, offline)).rejects.toThrow('Couldn')
+  await expect(runAiEdit(request, config, offline)).rejects.toThrow('Couldn')
 })
 
 test('the caller can abort the model call (the user pressed Stop)', async () => {
