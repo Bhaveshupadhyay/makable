@@ -3,16 +3,19 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
 import { useSession } from '@/features/auth'
 import { useTemplateCatalog } from '@/features/templates'
+import type { SiteDraft } from '@/features/visual-edit'
 import { fetchGithubData } from '../api/github'
 import { type ChatContext, initialConversation, isAiRequest } from '../lib/conversation'
 import { useBuilderStore } from '../store'
+
+const NO_FILE_EDITS: Record<string, string> = {}
 
 /** The builder conversation for the current visitor (signed in or guest), plus the side effects it asks for. */
 export function useBuilder() {
   const session = useSession()
   const queryClient = useQueryClient()
   const { data: catalog } = useTemplateCatalog()
-  const { login, conversation: stored, dispatch, setPortfolio, claim, reset, aiMode: aiModeOn, setAiMode } = useBuilderStore()
+  const { login, conversation: stored, fileEdits: storedFileEdits, dispatch, setDraft, claim, reset, aiMode: aiModeOn, setAiMode } = useBuilderStore()
 
   // Who is building: a GitHub login, null for a guest, or undefined while the session loads.
   // A failed session check counts as a guest, so the builder still works without the server.
@@ -27,6 +30,10 @@ export function useBuilder() {
     [owner, user, login, catalog],
   )
   const conversation = useMemo(() => (ctx ? stored : initialConversation()), [ctx, stored])
+  // AI-edited files for the current template. A stable object, so the visual editor's history
+  // can tell its own changes apart (see useVisualEdit).
+  const template = conversation.portfolio?.template
+  const fileEdits = (ctx && template && storedFileEdits[template]) || NO_FILE_EDITS
 
   // "Edit with AI" mode: the preview selects elements and shows the AI box. Signed-in users only,
   // and not persisted. Guests asking for it are sent to the chat's Connect GitHub prompt instead.
@@ -65,6 +72,7 @@ export function useBuilder() {
 
   return {
     conversation,
+    fileEdits,
     /**
      * `loading` until the session is known, so a stored conversation doesn't flash in late.
      * `offline` when the session check failed and the stored conversation belongs to an account.
@@ -86,8 +94,9 @@ export function useBuilder() {
       else dispatch({ type: 'ai-edit' }, ctx)
     },
     exitAiMode: () => setAiMode(false),
-    logAiRequest: (instruction: string, target: string | null) => ctx && dispatch({ type: 'ai-sent', instruction, target }, ctx),
-    setPortfolio: (portfolio: Parameters<typeof setPortfolio>[0]) => ctx && setPortfolio(portfolio),
+    logAiRequest: (instruction: string, target: string | null, result: string) =>
+      ctx && dispatch({ type: 'ai-sent', instruction, target, result }, ctx),
+    setDraft: (draft: SiteDraft) => ctx && setDraft(draft),
     startOver: () => ctx && reset(owner ?? null),
   }
 }

@@ -1,8 +1,9 @@
 import { type ReactNode, useState } from 'react'
+import { cn } from '@/shared/lib/cn'
 import type { usePreviewEngine } from '../hooks/use-preview-engine'
 import { DEVICES, type Device } from './devices'
 import { PreviewError } from './preview-error'
-import { PreviewToolbar } from './preview-toolbar'
+import { PreviewToolbar, type PreviewView } from './preview-toolbar'
 
 type PreviewPaneProps = {
   preview: ReturnType<typeof usePreviewEngine>
@@ -10,8 +11,11 @@ type PreviewPaneProps = {
   actions?: ReactNode
   /** Shown between the toolbar and the frame, e.g. an edit-mode hint. */
   banner?: ReactNode
-  /** Shown under the frame, e.g. the AI request inspector. */
-  footer?: ReactNode
+  /** What the pane shows. The frame stays mounted (and keeps running) in the code view. */
+  view?: PreviewView
+  onViewChange?: (view: PreviewView) => void
+  /** Shown instead of the frame in the code view. Without it, there's no Preview/Code switch. */
+  code?: ReactNode
   /**
    * Floats over the frame, e.g. a popover anchored to an element in the page. It's placed in a
    * box the size of the frame; position it with `absolute inset-px` to cover exactly the frame's
@@ -21,14 +25,24 @@ type PreviewPaneProps = {
 }
 
 /** Toolbar plus a device-sized iframe running the project in the browser. */
-export function PreviewPane({ preview: { iframeRef, state, refresh }, actions, banner, footer, overlay }: PreviewPaneProps) {
+export function PreviewPane({ preview: { iframeRef, state, refresh }, actions, banner, overlay, view = 'preview', onViewChange, code }: PreviewPaneProps) {
   const [device, setDevice] = useState<Device>('desktop')
+  const showCode = view === 'code' && !!code
 
   return (
     <div className="flex h-full flex-col">
-      <PreviewToolbar device={device} onDeviceChange={setDevice} state={state} onRefresh={refresh} actions={actions} />
-      {banner}
-      <div className="relative flex flex-1 justify-center overflow-hidden bg-muted p-3">
+      <PreviewToolbar
+        device={device}
+        onDeviceChange={setDevice}
+        state={state}
+        onRefresh={refresh}
+        actions={actions}
+        view={code && onViewChange ? view : undefined}
+        onViewChange={onViewChange}
+      />
+      {!showCode && banner}
+      {showCode && <div className="min-h-0 flex-1">{code}</div>}
+      <div className={cn('relative flex flex-1 justify-center overflow-hidden bg-muted p-3', showCode && 'hidden')}>
         <div style={{ width: DEVICES[device].width }} className="relative h-full max-w-full transition-[width] duration-300">
           <iframe
             ref={iframeRef}
@@ -39,7 +53,6 @@ export function PreviewPane({ preview: { iframeRef, state, refresh }, actions, b
         </div>
         {state.status === 'error' && <PreviewError error={state.error} />}
       </div>
-      {footer}
     </div>
   )
 }

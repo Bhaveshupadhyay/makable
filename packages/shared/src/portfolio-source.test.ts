@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Portfolio } from './portfolio'
-import { renderPortfolioSource } from './portfolio-source'
+import { parsePortfolioSource, renderPortfolioSource } from './portfolio-source'
 import type { TemplateKind } from './template-catalog'
 
 const sample: Portfolio = {
@@ -38,3 +38,12 @@ test.each(contentFiles)(
     expect(header(renderPortfolioSource(sample, kind))).toBe(header(template))
   },
 )
+
+test.each(['react', 'static'] as const)('%s: parsePortfolioSource reads the generated file back', (kind) => {
+  const source = renderPortfolioSource(sample, kind)
+  expect(parsePortfolioSource(source)).toEqual({ ok: true, portfolio: sample })
+  expect(parsePortfolioSource(source.replace('"Engineer"', '"Builder"'))).toMatchObject({ ok: true, portfolio: { profile: { headline: 'Builder' } } })
+  expect(parsePortfolioSource(source.replace('"Engineer"', "'Engineer'"))).toMatchObject({ ok: false, error: expect.stringContaining('JSON') })
+  expect(parsePortfolioSource(source.replace('"https://github.com/ada"', '"javascript:alert(1)"'))).toMatchObject({ ok: false, error: expect.stringContaining('links.github') })
+  expect(parsePortfolioSource('export default {}').ok).toBe(false)
+})

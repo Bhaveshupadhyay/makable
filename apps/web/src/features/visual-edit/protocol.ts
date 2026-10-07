@@ -16,6 +16,8 @@ export type ShimMode = 'off' | 'text' | 'select'
 export type HostMessage =
   | { source: typeof HOST_SOURCE; type: 'mode'; mode: ShimMode }
   | { source: typeof HOST_SOURCE; type: 'clear-selection' }
+  /** While locked (an AI request is pending), the page ignores clicks but keeps the selection. */
+  | { source: typeof HOST_SOURCE; type: 'lock'; locked: boolean }
 
 /** Shim → host. `ready` is sent on every page load so the host can resend the mode. */
 export type ShimMessage =

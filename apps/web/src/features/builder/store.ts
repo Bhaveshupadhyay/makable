@@ -1,4 +1,4 @@
-import type { Portfolio } from '@makable/shared'
+import type { SiteDraft } from '@/features/visual-edit'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { type ChatContext, type ChatEvent, type Conversation, initialConversation, reduceConversation } from './lib/conversation'
@@ -10,9 +10,14 @@ type BuilderState = {
    */
   login: string | null
   conversation: Conversation
+  /**
+   * Project files changed by AI code edits, per template id (repo path → full contents). They're
+   * layered over that template's files in the preview, and kept when switching templates.
+   */
+  fileEdits: Record<string, Record<string, string>>
   dispatch: (event: ChatEvent, ctx: ChatContext) => void
-  /** Direct content changes from outside the chat (visual edits). */
-  setPortfolio: (portfolio: Portfolio) => void
+  /** Direct changes from outside the chat (visual and AI edits). Stores the exact objects given. */
+  setDraft: (draft: SiteDraft) => void
   /** "Edit with AI" mode for the preview. Not persisted. */
   aiMode: boolean
   setAiMode: (aiMode: boolean) => void
@@ -28,14 +33,19 @@ export const useBuilderStore = create<BuilderState>()(
     (set) => ({
       login: null,
       conversation: initialConversation(),
+      fileEdits: {},
       dispatch: (event, ctx) => set(({ conversation }) => ({ conversation: reduceConversation(conversation, event, ctx) })),
-      setPortfolio: (portfolio) => set(({ conversation }) => ({ conversation: { ...conversation, portfolio } })),
+      setDraft: ({ portfolio, files }) =>
+        set(({ conversation, fileEdits }) => ({
+          conversation: { ...conversation, portfolio },
+          fileEdits: { ...fileEdits, [portfolio.template]: files },
+        })),
       aiMode: false,
       setAiMode: (aiMode) => set({ aiMode }),
       claim: (login) => set({ login }),
-      reset: (login) => set({ login, conversation: initialConversation(), aiMode: false }),
+      reset: (login) => set({ login, conversation: initialConversation(), fileEdits: {}, aiMode: false }),
     }),
-    { name: STORAGE_KEY, version: 1, partialize: ({ login, conversation }) => ({ login, conversation }) },
+    { name: STORAGE_KEY, version: 1, partialize: ({ login, conversation, fileEdits }) => ({ login, conversation, fileEdits }) },
   ),
 )
 

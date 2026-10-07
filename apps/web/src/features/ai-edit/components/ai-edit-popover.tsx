@@ -1,10 +1,10 @@
 import { type AiEditTarget, MAX_INSTRUCTION } from '@makable/shared'
-import { ArrowUp, Crosshair, LoaderCircle, X } from 'lucide-react'
+import { ArrowUp, Crosshair, LoaderCircle, Square, X } from 'lucide-react'
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { useElementSize } from '@/shared/hooks/use-element-size'
 import { Button } from '@/shared/ui/button'
 import type { AiEdit } from '../hooks/use-ai-edit'
-import { targetLabel } from '../lib/build-request'
+import { targetLabel } from '../lib/build-edit-request'
 import { type Box, placePopover } from '../lib/place-popover'
 
 type AiEditPopoverProps = {
@@ -52,7 +52,8 @@ export function AiEditPopover({ ai, target, anchor, onClear }: AiEditPopoverProp
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Escape') {
       e.preventDefault()
-      onClear()
+      // While the AI works the box stays open, so Stop stays reachable.
+      if (!ai.pending) onClear()
     } else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       submit()
@@ -71,7 +72,13 @@ export function AiEditPopover({ ai, target, anchor, onClear }: AiEditPopoverProp
           <div className="flex items-center gap-1.5 px-1 text-xs text-violet-700 dark:text-violet-300">
             <Crosshair className="size-3.5 shrink-0" />
             <span className="min-w-0 flex-1 truncate">{targetLabel(target)}</span>
-            <button type="button" aria-label="Clear selection" onClick={onClear} className="rounded-full p-0.5 hover:bg-muted">
+            <button
+              type="button"
+              aria-label="Clear selection"
+              disabled={ai.pending}
+              onClick={onClear}
+              className="rounded-full p-0.5 hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
+            >
               <X className="size-3.5" />
             </button>
           </div>
@@ -81,16 +88,43 @@ export function AiEditPopover({ ai, target, anchor, onClear }: AiEditPopoverProp
               aria-label="Ask AI to make changes"
               rows={1}
               value={text}
+              readOnly={ai.pending}
               maxLength={MAX_INSTRUCTION}
               placeholder="Ask AI to make changes"
               onChange={(e) => setText(e.target.value)}
               onKeyDown={onKeyDown}
               className="field-sizing-content max-h-28 min-h-8 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
             />
-            <Button type="submit" size="icon" aria-label="Send to AI" disabled={!text.trim() || ai.pending} className="size-8 rounded-full">
-              {ai.pending ? <LoaderCircle className="animate-spin" /> : <ArrowUp />}
-            </Button>
+            {/* Separate keys: if React reused the element, Stop would turn into a submit button
+                mid-click and send the request again. */}
+            {ai.pending ? (
+              <Button
+                key="stop"
+                type="button"
+                size="icon"
+                variant="outline"
+                aria-label="Stop AI"
+                title="Stop"
+                onClick={(e) => {
+                  e.preventDefault()
+                  ai.stop()
+                }}
+                className="size-8 rounded-full"
+              >
+                <Square className="fill-current" />
+              </Button>
+            ) : (
+              <Button key="send" type="submit" size="icon" aria-label="Send to AI" disabled={!text.trim()} className="size-8 rounded-full">
+                <ArrowUp />
+              </Button>
+            )}
           </div>
+          {ai.pending && (
+            <p role="status" className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
+              <LoaderCircle className="size-3.5 animate-spin" />
+              AI is working on it. Editing is paused until it's done.
+            </p>
+          )}
           {ai.invalid && (
             <p role="alert" className="px-1 text-xs text-destructive">
               {ai.invalid}

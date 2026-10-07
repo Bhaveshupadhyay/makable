@@ -41,7 +41,7 @@ export function BuilderPage() {
           </Panel>
           <Separator className="bg-border transition-colors hover:bg-ring data-[separator=active]:bg-ring aria-[orientation=horizontal]:h-px aria-[orientation=vertical]:w-px" />
           <Panel minSize={wide ? '360px' : '25'}>
-            <BuilderPreview portfolio={portfolio} onChange={builder.setPortfolio} builder={builder} />
+            <BuilderPreview draft={{ portfolio, files: builder.fileEdits }} onChange={builder.setDraft} builder={builder} />
           </Panel>
         </Group>
       ) : (
