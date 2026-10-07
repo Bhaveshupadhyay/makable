@@ -1,20 +1,26 @@
 import { fileURLToPath, URL } from 'node:url'
-import { aiContentRequestSchema, aiEditRequestSchema } from '@makable/shared'
+import { aiEditRequestSchema } from '@makable/shared'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, loadEnv, type Plugin, type ViteDevServer } from 'vite'
-import { type ModelConfig, ModelError, runAiContent } from './dev-server/ai-content'
-import { buildAiEditPrompt } from './dev-server/ai-edit-prompt'
+import { runAiEdit } from './dev-server/ai-edit'
+import { type ModelConfig, ModelError } from './dev-server/model'
 
 const MAX_BODY = 1_000_000
 
-type Handler = (json: unknown, send: (status: number, body: unknown) => void) => void | Promise<void>
+/** `signal` aborts when the client goes away (e.g. the user pressed Stop), so upstream work can stop. */
+type Handler = (json: unknown, send: (status: number, body: unknown) => void, signal: AbortSignal) => void | Promise<void>
 
 /** A POST-only JSON middleware: reads the body (capped), parses it, and hands it to `handle`. */
 function jsonEndpoint(server: ViteDevServer, route: string, handle: Handler) {
   server.middlewares.use(route, (req, res, next) => {
     if (req.method !== 'POST') return next()
+    const controller = new AbortController()
+    res.on('close', () => {
+      if (!res.writableEnded) controller.abort()
+    })
     const send = (status: number, body: unknown) => {
+      if (res.writableEnded || controller.signal.aborted) return
       res.statusCode = status
       res.setHeader('Content-Type', 'application/json')
       res.end(JSON.stringify(body))
@@ -38,19 +44,17 @@ function jsonEndpoint(server: ViteDevServer, route: string, handle: Handler) {
       } catch {
         return send(400, { error: 'Invalid JSON' })
       }
-      Promise.resolve(handle(json, send)).catch(() => send(500, { error: 'Unexpected error' }))
+      Promise.resolve(handle(json, send, controller.signal)).catch(() => send(500, { error: 'Unexpected error' }))
     })
   })
 }
 
 /**
- * Dev stand-ins for the control plane's AI endpoints until the Worker exists. They validate and
- * build prompts as the Worker will, and run before the `/api` proxy, so they work without
- * `wrangler dev`. System prompts stay on the server and are never returned.
- *
- * - `POST /api/ai/edit` (code edits, Tier 2): calls no model; returns the context it would send.
- * - `POST /api/ai/content` (content ops, Tier 1): calls an OpenAI-compatible model (OmniRoute by
- *   default) set by AI_BASE_URL / AI_API_KEY / AI_MODEL in `.env.local`.
+ * Dev stand-in for the control plane's `POST /api/ai/edit` until the Worker exists. It runs
+ * before the `/api` proxy, so it works without `wrangler dev`. Tier 1 calls an OpenAI-compatible
+ * model (OmniRoute by default) set by AI_BASE_URL / AI_API_KEY / AI_MODEL in `.env.local`.
+ * Tier 2 (GitHub Actions) isn't built: those requests come back as `{ tier: 2, reason }`. The
+ * system prompt stays on the server and is never returned.
  */
 function devAi(env: Record<string, string>): Plugin {
   const model: ModelConfig = {
@@ -62,22 +66,12 @@ function devAi(env: Record<string, string>): Plugin {
     name: 'makable-dev-ai',
     apply: 'serve',
     configureServer(server) {
-      jsonEndpoint(server, '/api/ai/edit', (json, send) => {
+      jsonEndpoint(server, '/api/ai/edit', async (json, send, signal) => {
         const request = aiEditRequestSchema.safeParse(json)
         if (!request.success) return send(400, { error: 'Invalid request', issues: request.error.issues })
-        const prompt = buildAiEditPrompt(request.data)
-        send(200, {
-          note: 'Dev endpoint: no model was called and nothing was changed. Below is the context the server gives the model, after its own system prompt.',
-          debug: { modelInput: prompt.messages.map((m) => m.content).join('\n\n') },
-        })
-      })
-
-      jsonEndpoint(server, '/api/ai/content', async (json, send) => {
-        const request = aiContentRequestSchema.safeParse(json)
-        if (!request.success) return send(400, { error: 'Invalid request', issues: request.error.issues })
         try {
-          const { response, modelInput, attempts } = await runAiContent(request.data, model)
-          send(200, { ...response, debug: { modelInput, attempts, model: model.model } })
+          const { result, modelInput, attempts } = await runAiEdit(request.data, model, fetch, signal)
+          send(200, { ...result, debug: { modelInput, attempts, model: model.model } })
         } catch (e) {
           if (e instanceof ModelError) return send(502, { error: e.message })
           throw e

@@ -12,6 +12,8 @@
 //   the position current on scroll, resize and layout changes, so the host can
 //   anchor its prompt box to it. Overlays mark the hovered and selected
 //   elements without touching the app's DOM.
+// While locked (an AI request is pending), clicks and Escape do nothing and
+// nothing is hovered, but the selection stays and its position keeps updating.
 ;(() => {
   if (window.__makableEditShim) return
   window.__makableEditShim = true
@@ -22,6 +24,7 @@
   const SELECT_ATTR = 'data-makable-select'
   /** @type {'off' | 'text' | 'select'} */
   let mode = 'off'
+  let locked = false
   /** @type {Element | null} */
   let selected = null
   /** @type {{ target: HTMLElement, editor: HTMLElement, original: string, visibility: string } | null} */
@@ -190,7 +193,7 @@
   }
 
   document.addEventListener('mouseover', (e) => {
-    if (mode !== 'select' || !(e.target instanceof Element)) return
+    if (mode !== 'select' || locked || !(e.target instanceof Element)) return
     hoverBox.show(e.target === document.body || e.target === document.documentElement ? null : e.target)
   })
   // Leaving the frame (e.g. onto the host's prompt box) fires mouseout with no related target.
@@ -198,7 +201,7 @@
     if (!e.relatedTarget) hoverBox.show(null)
   })
   document.addEventListener('keydown', (e) => {
-    if (mode === 'select' && e.key === 'Escape' && selected) select(null)
+    if (mode === 'select' && !locked && e.key === 'Escape' && selected) select(null)
   })
 
   function start(target) {
@@ -267,6 +270,7 @@
       // In edit modes, clicks edit or select; they never follow links or trigger app handlers.
       e.preventDefault()
       e.stopPropagation()
+      if (locked) return
       if (mode === 'select') {
         const target = e.target === document.body || e.target === document.documentElement ? null : e.target
         return select(target === selected ? null : target)
@@ -284,6 +288,10 @@
     if (!msg || msg.source !== HOST) return
     if (msg.type === 'mode') setMode(msg.mode)
     if (msg.type === 'clear-selection') select(null, false)
+    if (msg.type === 'lock') {
+      locked = msg.locked === true
+      if (locked) hoverBox.show(null)
+    }
   })
 
   post({ type: 'ready' })
