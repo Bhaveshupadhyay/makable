@@ -207,13 +207,13 @@ test('Edit with AI needs an open preview and is ignored during a GitHub lookup',
 
 test('sent AI requests are logged in the chat without moving the flow', () => {
   const atBio = run([say('portfolio'), { type: 'select-template', template: 'minimal' }, say('octocat'), { type: 'github-loaded', data: { ...github, profile: { ...github.profile, bio: null } } }, say('Engineer')])
-  const sent = run([{ type: 'ai-sent', instruction: 'Remove the skills section', target: 'Skills › skills.0' }], atBio)
+  const sent = run([{ type: 'ai-sent', instruction: 'Remove the skills section', target: 'Skills › skills.0', result: 'Removed 3 skills.' }], atBio)
   expect(sent.step).toBe('bio')
   expect(sent.messages.at(-2)).toMatchObject({ role: 'user', text: 'Remove the skills section' })
-  expect(last(sent).text).toContain('with “Skills › skills.0” as context')
+  expect(last(sent).text).toBe('Removed 3 skills.')
   expect(last(sent).replies).toEqual(['Skip', AI_EDIT])
   const start = initialConversation()
-  expect(run([{ type: 'ai-sent', instruction: 'x', target: null }], start)).toBe(start)
+  expect(run([{ type: 'ai-sent', instruction: 'x', target: null, result: 'y' }], start)).toBe(start)
 })
 
 test('isAiRequest matches what the reducer treats as an AI request', () => {

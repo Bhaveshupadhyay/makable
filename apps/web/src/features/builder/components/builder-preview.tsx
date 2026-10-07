@@ -54,7 +54,7 @@ function LoadedPreview({ template, files: templateFiles, portfolio, onChange, bu
     selecting: builder.aiMode,
     onTextMode: builder.exitAiMode,
   })
-  const ai = useAiEdit({ template, files, onSent: builder.logAiRequest })
+  const ai = useAiEdit({ portfolio, onApply: edit.applyPortfolio, onSent: builder.logAiRequest })
 
   return (
     <PreviewPane

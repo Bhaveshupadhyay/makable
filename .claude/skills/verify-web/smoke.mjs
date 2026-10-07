@@ -151,31 +151,32 @@ try {
   await page.waitForTimeout(300)
   if (Math.abs((await near()) - before) < 40) throw new Error('AI box did not follow the element on scroll')
   console.log('✓ AI edit: box opens next to the selected element, focused, and follows it on scroll')
-  await aiBox.fill('Remove the skills section')
+  const skills = frame.locator('[data-content^="skills."]')
+  const skillCount = await skills.count()
+  await aiBox.fill('Remove this skill and punch up the headline')
   await shot('ai-edit-popover.png')
   await aiBox.press('Enter')
+  // The dev endpoint calls the mock model; its ops are applied to the preview.
+  await frame.getByText('AI headline').waitFor({ timeout: 60000 })
+  if ((await skills.count()) !== skillCount - 1) throw new Error('the AI should have removed one skill')
   const sent = page.getByRole('region', { name: 'AI request' })
-  await sent.waitFor({ timeout: 30000 })
-  const prompt = await sent.textContent()
-  for (const expected of [
-    '<instruction>\nRemove the skills section',
-    '- Inside: <section id="skills">',
-    '- Content: skills.0 in src/content/portfolio.ts',
-    '<file path="src/components/Skills.tsx"',
-    'renders <Skills>',
-  ]) {
-    if (!prompt.includes(expected)) throw new Error(`AI prompt is missing ${JSON.stringify(expected)}`)
+  await sent.waitFor()
+  const inspector = await sent.textContent()
+  for (const expected of ['applied', 'remove skills.0', 'set profile.headline = "AI headline"', 'path: skills.0']) {
+    if (!inspector.includes(expected)) throw new Error(`AI inspector is missing ${JSON.stringify(expected)}`)
   }
   // The system prompt stays on the server: the browser never sends it or gets it back.
-  if (prompt.includes('You edit a developer')) throw new Error('the system prompt reached the browser')
-  await assistantSays('as context')
+  if (inspector.includes('You edit the content')) throw new Error('the system prompt reached the browser')
+  await assistantSays('Removed the first skill and rewrote the headline')
   await shot('ai-edit.png')
-  // Sending closes the box (the selection is used up); the preview didn't change; leaving AI mode closes the inspector.
+  // Sending closes the box (the selection is used up); the change is one undo step; leaving AI mode closes the inspector.
   await aiBox.waitFor({ state: 'detached' })
-  await chip.waitFor()
   await aiEditToolbar.click()
   await sent.waitFor({ state: 'detached' })
-  console.log('✓ AI edit: selected element, instruction and source files sent; prompt built by the dev endpoint')
+  await page.getByRole('button', { name: /Undo/ }).click()
+  await frame.getByText('Smoke test headline').waitFor({ timeout: 30000 })
+  if ((await skills.count()) !== skillCount) throw new Error('undo should bring the skill back')
+  console.log('✓ AI edit: ops from the model applied to the preview, shown in the chat and inspector, undone in one step')
   await expectEditable(frame, 'React')
   await expectVisualEdit(page, frame, 'React')
   const title = await frame.locator('html').evaluate(() => document.title)

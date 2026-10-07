@@ -86,7 +86,8 @@ export function useBuilder() {
       else dispatch({ type: 'ai-edit' }, ctx)
     },
     exitAiMode: () => setAiMode(false),
-    logAiRequest: (instruction: string, target: string | null) => ctx && dispatch({ type: 'ai-sent', instruction, target }, ctx),
+    logAiRequest: (instruction: string, target: string | null, result: string) =>
+      ctx && dispatch({ type: 'ai-sent', instruction, target, result }, ctx),
     setPortfolio: (portfolio: Parameters<typeof setPortfolio>[0]) => ctx && setPortfolio(portfolio),
     startOver: () => ctx && reset(owner ?? null),
   }

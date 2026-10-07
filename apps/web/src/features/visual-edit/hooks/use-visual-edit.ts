@@ -148,6 +148,8 @@ export function useVisualEdit({ iframeRef, portfolio, onChange, selecting = fals
     /** Where the selection is in the preview page's viewport, kept current as it scrolls. */
     selectionRect,
     clearSelection,
+    /** Applies a change from outside the preview (e.g. AI ops) as one undoable step. */
+    applyPortfolio: commit,
     error,
     canUndo: history.past.length > 0,
     canRedo: history.future.length > 0,

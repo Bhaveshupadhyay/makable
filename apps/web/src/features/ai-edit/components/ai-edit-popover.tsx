@@ -4,7 +4,7 @@ import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 
 import { useElementSize } from '@/shared/hooks/use-element-size'
 import { Button } from '@/shared/ui/button'
 import type { AiEdit } from '../hooks/use-ai-edit'
-import { targetLabel } from '../lib/build-request'
+import { targetLabel } from '../lib/build-content-request'
 import { type Box, placePopover } from '../lib/place-popover'
 
 type AiEditPopoverProps = {

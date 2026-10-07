@@ -40,7 +40,7 @@ export type ChatEvent =
   /** The "Edit with AI" button outside the chat (preview toolbar). */
   | { type: 'ai-edit' }
   /** An AI edit request went out from the box under the preview. `target` labels the selected element. */
-  | { type: 'ai-sent'; instruction: string; target: string | null }
+  | { type: 'ai-sent'; instruction: string; target: string | null; result: string }
 
 export type TemplateOption = { id: TemplateId; name: string }
 
@@ -226,10 +226,9 @@ export function reduceConversation(state: Conversation, event: ChatEvent, ctx: C
 
     case 'ai-sent': {
       if (!state.portfolio) return state
-      const context = event.target ? ` with “${event.target}” as context` : ''
       return reply(
         { ...state, messages: [...state.messages, user(event.instruction)] },
-        `Sent to the AI${context}. It can't apply changes yet, so the preview stays the same. The panel under the preview shows exactly what it received.`,
+        event.result,
         { replies: promptFor(state.step, state.portfolio, ctx).replies },
       )
     }
