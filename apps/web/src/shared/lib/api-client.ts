@@ -11,13 +11,16 @@ export class ApiError extends Error {
   }
 }
 
+/** Same-origin JSON request options. `Headers` accepts every `HeadersInit` form; the caller's `Accept` wins. */
+function jsonInit(init?: RequestInit): RequestInit {
+  const headers = new Headers(init?.headers)
+  if (!headers.has('Accept')) headers.set('Accept', 'application/json')
+  return { ...init, credentials: 'same-origin', headers }
+}
+
 /** Fetch JSON from a same-origin `/api` route as-is. Used for the dev AI endpoint, which isn't on the backend. */
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    ...init,
-    credentials: 'same-origin',
-    headers: { Accept: 'application/json', ...init?.headers },
-  })
+  const res = await fetch(`/api${path}`, jsonInit(init))
   if (!res.ok) {
     throw new ApiError(res.status, `${init?.method ?? 'GET'} /api${path} failed with ${res.status}`)
   }
@@ -34,32 +37,40 @@ type Envelope<T> =
 
 let refreshing: Promise<boolean> | null = null
 
-/** Refreshes the session cookies. Requests that get a 401 at the same time share one refresh, because the
- * refresh token is single-use: a second, parallel refresh would fail and sign the user out. */
+/**
+ * Refreshes the session cookies. Resolves `false` only when the backend says the session is over (401). Any
+ * other failure (network, 5xx) throws, so callers treat it as "couldn't reach the server", not "signed out".
+ *
+ * The refresh token is single-use, so refreshes must not overlap. Requests in this tab that get a 401 at the
+ * same time share one refresh, and a Web Lock serializes refreshes across tabs: a tab that waited sends the
+ * cookie the previous tab just received.
+ */
 function refreshSession(): Promise<boolean> {
-  refreshing ??= fetch(`${BACKEND}${REFRESH_PATH}`, { method: 'POST', credentials: 'same-origin' })
-    .then(
-      (res) => res.ok,
-      () => false,
-    )
-    .finally(() => {
-      refreshing = null
-    })
+  refreshing ??= withRefreshLock(async () => {
+    const res = await fetch(`${BACKEND}${REFRESH_PATH}`, { method: 'POST', credentials: 'same-origin' })
+    if (res.ok) return true
+    if (res.status === 401) return false
+    throw new ApiError(res.status, `POST ${BACKEND}${REFRESH_PATH} failed with ${res.status}`)
+  }).finally(() => {
+    refreshing = null
+  })
   return refreshing
 }
 
+function withRefreshLock<T>(run: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
+  return locks ? locks.request('makable:session-refresh', run) : run()
+}
+
 function send(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${BACKEND}${path}`, {
-    ...init,
-    credentials: 'same-origin',
-    headers: { Accept: 'application/json', ...init?.headers },
-  })
+  return fetch(`${BACKEND}${path}`, jsonInit(init))
 }
 
 /**
  * Calls the makable backend (`/api/v1`). The API shares the SPA's origin, so the HttpOnly session cookies are
  * sent. Unwraps the `{ success, data }` envelope and throws `ApiError` (with the server's `code`) otherwise.
- * The access token is short-lived, so on a 401 the session is refreshed once and the request retried.
+ * The access token is short-lived, so on a 401 the session is refreshed once and the request retried. If the
+ * refresh itself fails for any reason but a 401, that error is thrown instead of the original 401.
  */
 export async function backendFetch<T>(path: string, init?: RequestInit): Promise<T> {
   let res = await send(path, init)

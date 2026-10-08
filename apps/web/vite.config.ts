@@ -90,7 +90,8 @@ export default defineConfig(({ mode }) => ({
     },
   },
   server: {
-    // The control plane Worker (`wrangler dev`) serves the API on :8787.
+    // makable-backend (FastAPI, `uv run uvicorn main:create_app --factory --port 8787`) serves `/api/v1`.
+    // `devAi` answers `/api/ai/edit` before this proxy.
     proxy: { '/api': 'http://localhost:8787' },
   },
 }))
