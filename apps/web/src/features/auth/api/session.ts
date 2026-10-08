@@ -1,4 +1,4 @@
-import { ApiError, apiFetch } from '@/shared/lib/api-client'
+import { ApiError, backendFetch } from '@/shared/lib/api-client'
 import { safeReturnTo } from '../lib/safe-return-to'
 import type { SessionUser } from '../types'
 
@@ -9,9 +9,11 @@ const MOCK_USER: SessionUser = {
   login: 'octocat',
   name: 'The Octocat',
   avatarUrl: 'https://github.com/octocat.png',
+  role: 'user',
 }
 
-/** Starts the GitHub App OAuth flow. The Worker redirects back to `returnTo` when done. */
+/** Starts GitHub sign-in. The backend runs it through Supabase Auth and redirects back to `returnTo`, with
+ * `?authError=<code>` if it failed. */
 export function loginWithGithub(path = '/') {
   const returnTo = safeReturnTo(path)
   if (MOCK_AUTH) {
@@ -19,14 +21,14 @@ export function loginWithGithub(path = '/') {
     window.location.assign(returnTo)
     return
   }
-  window.location.assign(`/api/auth/github/login?returnTo=${encodeURIComponent(returnTo)}`)
+  window.location.assign(`/api/v1/auth/github/login?returnTo=${encodeURIComponent(returnTo)}`)
 }
 
-/** Returns the signed-in user, or null when there is no session. */
+/** Returns the signed-in user, or null when there is no session (`backendFetch` already tried a refresh). */
 export async function fetchSession(): Promise<SessionUser | null> {
   if (MOCK_AUTH) return localStorage.getItem(MOCK_KEY) ? MOCK_USER : null
   try {
-    const { user } = await apiFetch<{ user: SessionUser }>('/auth/session')
+    const { user } = await backendFetch<{ user: SessionUser }>('/auth/session')
     return user
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) return null
@@ -39,5 +41,5 @@ export async function logout(): Promise<void> {
     localStorage.removeItem(MOCK_KEY)
     return
   }
-  await apiFetch<void>('/auth/logout', { method: 'POST' })
+  await backendFetch<void>('/auth/logout', { method: 'POST' })
 }
