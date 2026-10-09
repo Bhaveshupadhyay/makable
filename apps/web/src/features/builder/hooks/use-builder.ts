@@ -1,4 +1,4 @@
-import type { TemplateId } from '@makable/shared'
+import type { AiEditTurn, TemplateId } from '@makable/shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
 import { useSession } from '@/features/auth'
@@ -9,13 +9,27 @@ import { type ChatContext, initialConversation, isAiRequest } from '../lib/conve
 import { useBuilderStore } from '../store'
 
 const NO_FILE_EDITS: Record<string, string> = {}
+const NO_AI_HISTORY: AiEditTurn[] = []
 
 /** The builder conversation for the current visitor (signed in or guest), plus the side effects it asks for. */
 export function useBuilder() {
   const session = useSession()
   const queryClient = useQueryClient()
   const { data: catalog } = useTemplateCatalog()
-  const { login, conversation: stored, fileEdits: storedFileEdits, dispatch, setDraft, claim, reset, aiMode: aiModeOn, setAiMode } = useBuilderStore()
+  const {
+    login,
+    conversation: stored,
+    fileEdits: storedFileEdits,
+    aiHistory: storedAiHistory,
+    recordAiTurn,
+    amendAiTurn,
+    dispatch,
+    setDraft,
+    claim,
+    reset,
+    aiMode: aiModeOn,
+    setAiMode,
+  } = useBuilderStore()
 
   // Who is building: a GitHub login, null for a guest, or undefined while the session loads.
   // A failed session check counts as a guest, so the builder still works without the server.
@@ -34,6 +48,7 @@ export function useBuilder() {
   // can tell its own changes apart (see useVisualEdit).
   const template = conversation.portfolio?.template
   const fileEdits = (ctx && template && storedFileEdits[template]) || NO_FILE_EDITS
+  const aiHistory = (ctx && template && storedAiHistory[template]) || NO_AI_HISTORY
 
   // "Edit with AI" mode: the preview selects elements and shows the AI box. Signed-in users only,
   // and not persisted. Guests asking for it are sent to the chat's Connect GitHub prompt instead.
@@ -96,6 +111,10 @@ export function useBuilder() {
     exitAiMode: () => setAiMode(false),
     logAiRequest: (instruction: string, target: string | null, result: string) =>
       ctx && dispatch({ type: 'ai-sent', instruction, target, result }, ctx),
+    /** Finished AI requests for the current template, oldest first. */
+    aiHistory,
+    recordAiTurn: (turn: AiEditTurn) => ctx && template && recordAiTurn(template, turn),
+    amendAiTurn: (reply: string) => ctx && template && amendAiTurn(template, reply),
     setDraft: (draft: SiteDraft) => ctx && setDraft(draft),
     startOver: () => ctx && reset(owner ?? null),
   }

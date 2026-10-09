@@ -176,9 +176,9 @@ try {
   console.log('✓ AI edit: editing locked while the AI works; Stop cancels it and changes nothing')
   await aiBox.fill('Remove this skill and punch up the headline')
   await shot('ai-edit-popover.png')
-  const aiResponse = page.waitForResponse((r) => r.url().endsWith('/api/ai/edit'))
+  const aiResponse = page.waitForResponse((r) => r.url().endsWith('/api/v1/ai/edit'))
   await aiBox.press('Enter')
-  // The dev endpoint calls the mock model; its edits are applied to the preview: the content file
+  // The backend calls the mock model; its edits are applied to the preview: the content file
   // edit becomes the portfolio, the stylesheet edit an AI-edited file.
   const headline = frame.locator('[data-content="profile.headline"]').first()
   await frame.getByText('AI headline').waitFor({ timeout: 60000 })

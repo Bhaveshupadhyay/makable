@@ -2,9 +2,13 @@ import {
   type AiEditFile,
   type AiEditRequest,
   type AiEditTarget,
+  type AiEditTurn,
   aiEditRequestSchema,
   MAX_FILE_CHARS,
   MAX_FILES,
+  MAX_HISTORY,
+  MAX_HISTORY_REPLY,
+  MAX_TARGET_LABEL,
   SAFE_REPO_PATH,
   type TemplateEntry,
 } from '@makable/shared'
@@ -16,10 +20,17 @@ const MAX_IMPORTED = 2
 type Template = Pick<TemplateEntry, 'id' | 'name' | 'kind' | 'version' | 'contentPath'>
 
 /**
- * The request body for `POST /api/ai/edit`: the instruction, the selection and the files most
- * likely to change. Validated here too, so oversized input fails before sending.
+ * The request body for `POST /api/v1/ai/edit`: the instruction, the selection, the files most
+ * likely to change and the latest earlier requests. Validated here too, so oversized input fails
+ * before sending.
  */
-export function buildEditRequest(instruction: string, target: AiEditTarget | null, template: Template, files: Record<string, string>): AiEditRequest {
+export function buildEditRequest(
+  instruction: string,
+  target: AiEditTarget | null,
+  template: Template,
+  files: Record<string, string>,
+  history: AiEditTurn[] = [],
+): AiEditRequest {
   const fileTree = Object.keys(files).filter((path) => SAFE_REPO_PATH.test(path)).sort()
   return aiEditRequestSchema.parse({
     instruction,
@@ -27,7 +38,13 @@ export function buildEditRequest(instruction: string, target: AiEditTarget | nul
     template: { id: template.id, name: template.name, kind: template.kind, version: template.version, contentPath: template.contentPath },
     fileTree: fileTree.slice(0, 500),
     files: pickFiles(files, target, template.contentPath),
+    history: history.slice(-MAX_HISTORY).map(fitTurn),
   })
+}
+
+/** Shortens a stored turn to the request's caps, so one long entry can't make every request invalid. */
+function fitTurn({ instruction, target, reply }: AiEditTurn): AiEditTurn {
+  return { instruction, target: target && target.slice(0, MAX_TARGET_LABEL), reply: reply.slice(0, MAX_HISTORY_REPLY) }
 }
 
 /**

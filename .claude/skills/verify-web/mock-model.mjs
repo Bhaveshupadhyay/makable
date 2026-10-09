@@ -1,7 +1,7 @@
 // A fake OpenAI-compatible model for the smoke test. It reads the files in the prompt and answers
 // with search/replace edits, wrapped in a fence like free models do: in the content file, a new
 // headline and the first skill removed; in the stylesheet, an outline on the headline (an
-// AI-edited file). An instruction containing "slowly" waits 5 s first, to test Stop. Run it with `bun mock-model.mjs` and start vite with AI_BASE_URL=http://localhost:9999/v1.
+// AI-edited file). An instruction containing "slowly" waits 5 s first, to test Stop. Run it with `bun mock-model.mjs` and start makable-backend with AI_BASE_URL=http://localhost:9999/v1 AI_DEBUG=true.
 const fileIn = (prompt, pattern) => {
   const match = new RegExp(`<file path="(${pattern})"[^>]*>\\n([\\s\\S]*?)\\n</file>`).exec(prompt)
   return match && { path: match[1], content: match[2] }

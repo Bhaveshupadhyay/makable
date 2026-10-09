@@ -132,7 +132,7 @@ export function AiEditPopover({ ai, target, anchor, onClear }: AiEditPopoverProp
           )}
           {ai.error && (
             <p role="alert" className="px-1 text-xs text-destructive">
-              Couldn't reach the AI service. {ai.error.message}
+              {ai.error}
             </p>
           )}
         </form>

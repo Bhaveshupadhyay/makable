@@ -49,6 +49,14 @@ test('buildEditRequest validates and lists the file tree', () => {
   expect(() => buildEditRequest('   ', null, template, files)).toThrow()
 })
 
+test('buildEditRequest sends the latest earlier requests, shortened to fit', () => {
+  const history = Array.from({ length: 12 }, (_, i) => ({ instruction: `Request ${i}`, target: null, reply: 'x'.repeat(2000) }))
+  const request = buildEditRequest('Make it bigger', null, template, files, history)
+  expect(request.history.map((t) => t.instruction)).toEqual(history.slice(2).map((t) => t.instruction))
+  expect(request.history[0].reply).toHaveLength(1000)
+  expect(buildEditRequest('Make it green', null, template, files).history).toEqual([])
+})
+
 test('targetLabel names the section, path and short text', () => {
   expect(targetLabel(target({ tag: 'li', contentPath: 'skills.0', text: 'TypeScript', section: { tag: 'section', id: 'skills', heading: 'Skills' } }))).toBe('Skills › skills.0 “TypeScript”')
   expect(targetLabel(target({ tag: 'h1' }))).toBe('<h1>')
