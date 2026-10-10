@@ -134,7 +134,11 @@ async function sha256(text: string): Promise<string> {
  * saved state never lists files that aren't saved yet. Null when nothing changed.
  */
 export function planSave(files: WorkspaceFiles, hashes: Record<string, string>, synced: Record<string, string> | null): SaveBatch[] | null {
-  const changed = Object.keys(files.parts).filter((path) => hashes[path] !== synced?.[path])
+  // New files first and replaced ones last, so they land with the state when they fit: until the state is saved,
+  // GitHub's state doesn't list the new files, and the files it lists keep the content it was saved with.
+  const changed = Object.keys(files.parts)
+    .filter((path) => hashes[path] !== synced?.[path])
+    .sort((a, b) => Number(synced !== null && a in synced) - Number(synced !== null && b in synced))
   const deletes = Object.keys(synced ?? {}).filter((path) => path !== STATE_KEY && !(path in files.parts))
   if (!changed.length && !deletes.length && hashes[STATE_KEY] === synced?.[STATE_KEY]) return null
 

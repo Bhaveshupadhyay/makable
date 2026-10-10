@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { CHUNK_MAX_BYTES, CHUNK_MAX_MESSAGES, type SessionMessage } from '@makable/shared'
+import { CHUNK_MAX_BYTES, CHUNK_MAX_MESSAGES, chunkPath, type SessionMessage } from '@makable/shared'
 import { initialConversation } from './conversation'
 import type { SessionState } from './session-file'
 import {
@@ -94,4 +94,13 @@ test('a big save goes up in batches, with the state only in the last one', async
   expect(batches.at(-1)?.state?.messageChunks).toBe(big.state.messageChunks)
   expect(batches.flatMap((b) => b.parts.map((p) => p.path)).sort()).toEqual(Object.keys(big.parts).sort())
   expect(STATE_KEY in (await hashFiles(big))).toBe(true)
+
+  // Growing a saved chat: the new chunks go first, the replaced last chunk goes with the state.
+  const synced = await hashFiles(big)
+  const bigger = toWorkspaceFiles({ ...long, conversation: { ...long.conversation, messages: messages(3000, 'x'.repeat(1000)) } }, 'octocat', now)
+  const next = planSave(bigger, await hashFiles(bigger), synced)!
+  const last = chunkPath(big.state.messageChunks)
+  expect(next.length).toBeGreaterThan(1)
+  expect(next.at(-1)?.parts.map((p) => p.path)).toContain(last)
+  for (const batch of next.slice(0, -1)) expect(batch.parts.every((p) => !(p.path in synced))).toBe(true)
 })
