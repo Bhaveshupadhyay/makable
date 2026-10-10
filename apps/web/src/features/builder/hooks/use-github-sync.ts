@@ -24,6 +24,13 @@ export type SyncStatus =
 type Reason = 'change' | 'retry' | 'hidden' | 'close' | 'manual'
 type Context = { active: boolean; account: string | null; builder: Pick<Builder, 'sync'> }
 
+// Answers that say how long to wait (`details.retryAfter`), and what to tell the user meanwhile.
+const SLOW_DOWN: Record<string, string> = {
+  github_rate_limited: 'GitHub asked makable to slow down.',
+  service_busy: 'The makable server is busy.',
+  too_many_requests: 'Saving too often.',
+}
+
 // Errors the user has to act on; retrying won't help.
 const BLOCKING = new Set(['workspace_repo_taken', 'workspace_repo_public', 'github_reconnect', 'workspace_session_too_large'])
 
@@ -187,11 +194,12 @@ function createGithubSync(initial: Context, onStatus: (status: SyncStatus) => vo
     if (e instanceof ApiError && (e.status === 401 || (e.code && BLOCKING.has(e.code)))) {
       return set({ state: 'blocked', message: e.code === 'unauthorized' ? 'Connect GitHub again to keep saving.' : e.message })
     }
-    const wait = e instanceof ApiError && e.code === 'github_rate_limited' ? retryAfterMs(e.details) : null
-    if (wait !== null) {
+    const slowDown = e instanceof ApiError && e.code ? SLOW_DOWN[e.code] : undefined
+    const wait = slowDown && e instanceof ApiError ? retryAfterMs(e.details) : null
+    if (slowDown && wait !== null) {
       notBefore = Date.now() + wait
       const at = new Date(notBefore).toLocaleTimeString(undefined, { timeStyle: 'short' })
-      set({ state: 'error', message: `GitHub asked makable to slow down. Saving again at ${at}.` })
+      set({ state: 'error', message: `${slowDown} Saving again at ${at}.` })
       return schedule(wait, 'retry')
     }
     set({ state: 'error', message: e instanceof ApiError && e.code ? e.message : "Couldn't reach GitHub. Trying again soon." })
