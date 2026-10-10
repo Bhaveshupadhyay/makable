@@ -24,8 +24,10 @@ Playwright's Chromium is already cached at `~/Library/Caches/ms-playwright/chrom
    cp <repo>/.claude/skills/verify-web/smoke.mjs .
    ```
 3. **Run it:** `bun smoke.mjs` (env: `BASE_URL`, default `http://localhost:5199`; `OUT_DIR` for screenshots, default cwd). It prints each step and exits non-zero on failure or on any page/console error.
-4. **Look at the screenshots** it writes (`chat-start.png`, `connect-github.png`, `ai-edit-pending.png`, `ai-edit-popover.png`, `ai-edit.png`, `code-view.png`, `builder.png`, `builder-static.png`, `builder-remote-assets.png`, `builder-mobile.png`) with the Read tool. Check the layout, not just the assertions.
+4. **Look at the screenshots** it writes (`chat-start.png`, `connect-github.png`, `ai-edit-pending.png`, `ai-edit-popover.png`, `ai-edit.png`, `code-view.png`, `builder.png`, `builder-static.png`, `builder-remote-assets.png`, `builder-mobile.png`, `session-import.png`, `account-menu.png`) with the Read tool. Check the layout, not just the assertions.
 5. **Stop the servers:** `pkill -f 'vite --port 5199'; pkill -f mock-model.mjs`.
+
+The run also exports the session (checks the file), starts over, refuses a broken file, then imports the export (Cancel first, then Replace) and checks the site comes back. The exported file lands in `OUT_DIR`.
 
 When a feature adds a new flow, extend `smoke.mjs` here, rather than writing a one-off script.
 Notes: on macOS, Home/End scroll the page instead of moving the caret, even in an editable. Use `Meta+ArrowLeft/Right` to move the caret in tests. The chat's GitHub lookup calls the public GitHub API (60 req/h per IP), and the preview needs network access to the CodeSandbox bundler, the jsDelivr CDN (Tailwind and the Monaco editor) and the published template catalog on GitHub Pages.
