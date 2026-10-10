@@ -11,6 +11,10 @@ export const MAX_INSTRUCTION = 2000
 export const MAX_ELEMENT_HTML = 4000
 export const MAX_FILE_CHARS = 60_000
 export const MAX_FILES = 6
+/** Earlier requests sent back as context. The browser keeps them; the server stores nothing. */
+export const MAX_HISTORY = 10
+export const MAX_HISTORY_REPLY = 1000
+export const MAX_TARGET_LABEL = 300
 
 /**
  * The element the user clicked in the preview. It's described by the page itself, so it's
@@ -41,6 +45,19 @@ export const aiEditFileSchema = z.object({
 })
 export type AiEditFile = z.infer<typeof aiEditFileSchema>
 
+/**
+ * An earlier request in this project and how it went, so follow-ups like "make it bigger" work.
+ * Kept in the browser, so the server treats it as untrusted prompt data.
+ */
+export const aiEditTurnSchema = z.object({
+  instruction: z.string().trim().min(1).max(MAX_INSTRUCTION),
+  /** A short label for what was selected (`targetLabel`), e.g. `Hero › <a> “Contact”`. */
+  target: z.string().max(MAX_TARGET_LABEL).nullable(),
+  /** What happened: the summary of the change, or why nothing changed. */
+  reply: z.string().max(MAX_HISTORY_REPLY),
+})
+export type AiEditTurn = z.infer<typeof aiEditTurnSchema>
+
 export const aiEditRequestSchema = z.object({
   instruction: z.string().trim().min(1).max(MAX_INSTRUCTION),
   /** Null when nothing was selected: the request is about the whole page. */
@@ -57,5 +74,7 @@ export const aiEditRequestSchema = z.object({
   fileTree: z.array(z.string().regex(SAFE_REPO_PATH)).max(500),
   /** The files most likely to change, with their contents. */
   files: z.array(aiEditFileSchema).max(MAX_FILES),
+  /** Earlier requests in this project, oldest first. */
+  history: z.array(aiEditTurnSchema).max(MAX_HISTORY),
 })
 export type AiEditRequest = z.infer<typeof aiEditRequestSchema>

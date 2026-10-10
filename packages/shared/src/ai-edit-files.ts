@@ -27,7 +27,7 @@ export const aiFileEditsResponseSchema = z.union([
 ])
 export type AiFileEditsResponse = z.infer<typeof aiFileEditsResponseSchema>
 
-/** What `POST /api/ai/edit` answers: Tier 1 edits to apply, or a hand-off to Tier 2. */
+/** What `POST /api/v1/ai/edit` (makable-backend) answers: Tier 1 edits to apply, or a hand-off to Tier 2. */
 export type AiEditResult = { tier: 1; summary: string; edits: FileEdit[] } | { tier: 2; reason: string }
 
 export type ApplyFileEditsResult = { ok: true; files: Record<string, string>; changed: string[] } | { ok: false; error: string }

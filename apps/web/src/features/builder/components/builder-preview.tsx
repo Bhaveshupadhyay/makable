@@ -14,8 +14,8 @@ type BuilderPreviewProps = {
   /** The content and the AI-edited files. `onChange` must store the exact objects it's given. */
   draft: SiteDraft
   onChange: (draft: SiteDraft) => void
-  /** AI mode and the chat log for AI requests. */
-  builder: Pick<Builder, 'aiMode' | 'toggleAiMode' | 'exitAiMode' | 'logAiRequest'>
+  /** AI mode, the chat log and the history of AI requests. */
+  builder: Pick<Builder, 'aiMode' | 'toggleAiMode' | 'exitAiMode' | 'logAiRequest' | 'aiHistory' | 'recordAiTurn' | 'amendAiTurn'>
 }
 
 /** Live preview of the site with click-to-edit text and AI edits, once its template's files are loaded. */
@@ -72,6 +72,9 @@ function LoadedPreview({ template, files: templateFiles, draft, onChange, builde
     onUndo: edit.undo,
     previewError: preview.state.status === 'error' ? preview.state.error : null,
     onSent: builder.logAiRequest,
+    history: builder.aiHistory,
+    onRecord: builder.recordAiTurn,
+    onAmend: builder.amendAiTurn,
   })
   const [view, setView] = useState<PreviewView>('preview')
   const aiEdited = useMemo(() => new Set(Object.keys(fileEdits)), [fileEdits])

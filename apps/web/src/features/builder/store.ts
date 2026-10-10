@@ -1,3 +1,4 @@
+import type { AiHistoryTurn } from '@/features/ai-edit'
 import type { SiteDraft } from '@/features/visual-edit'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
@@ -15,6 +16,14 @@ type BuilderState = {
    * layered over that template's files in the preview, and kept when switching templates.
    */
   fileEdits: Record<string, Record<string, string>>
+  /**
+   * Finished AI requests per template id, oldest first (instruction, selection, what happened).
+   * The latest are sent with each AI request as context. Kept only here: the backend stores nothing.
+   */
+  aiHistory: Record<string, AiHistoryTurn[]>
+  recordAiTurn: (template: string, turn: AiHistoryTurn) => void
+  /** Rewrites the reply of one of a template's turns (its change was undone). */
+  amendAiTurn: (template: string, id: string, reply: string) => void
   dispatch: (event: ChatEvent, ctx: ChatContext) => void
   /** Direct changes from outside the chat (visual and AI edits). Stores the exact objects given. */
   setDraft: (draft: SiteDraft) => void
@@ -27,6 +36,8 @@ type BuilderState = {
 }
 
 const STORAGE_KEY = 'makable:builder'
+// More than a request sends, so the history stays useful for exporting and syncing later.
+const MAX_STORED_TURNS = 50
 
 export const useBuilderStore = create<BuilderState>()(
   persist(
@@ -34,6 +45,15 @@ export const useBuilderStore = create<BuilderState>()(
       login: null,
       conversation: initialConversation(),
       fileEdits: {},
+      aiHistory: {},
+      recordAiTurn: (template, turn) =>
+        set(({ aiHistory }) => ({ aiHistory: { ...aiHistory, [template]: [...(aiHistory[template] ?? []), turn].slice(-MAX_STORED_TURNS) } })),
+      amendAiTurn: (template, id, reply) =>
+        set(({ aiHistory }) => {
+          const turns = aiHistory[template]
+          if (!turns?.some((turn) => turn.id === id)) return {}
+          return { aiHistory: { ...aiHistory, [template]: turns.map((turn) => (turn.id === id ? { ...turn, reply } : turn)) } }
+        }),
       dispatch: (event, ctx) => set(({ conversation }) => ({ conversation: reduceConversation(conversation, event, ctx) })),
       setDraft: ({ portfolio, files }) =>
         set(({ conversation, fileEdits }) => ({
@@ -43,9 +63,13 @@ export const useBuilderStore = create<BuilderState>()(
       aiMode: false,
       setAiMode: (aiMode) => set({ aiMode }),
       claim: (login) => set({ login }),
-      reset: (login) => set({ login, conversation: initialConversation(), fileEdits: {}, aiMode: false }),
+      reset: (login) => set({ login, conversation: initialConversation(), fileEdits: {}, aiHistory: {}, aiMode: false }),
     }),
-    { name: STORAGE_KEY, version: 1, partialize: ({ login, conversation, fileEdits }) => ({ login, conversation, fileEdits }) },
+    {
+      name: STORAGE_KEY,
+      version: 1,
+      partialize: ({ login, conversation, fileEdits, aiHistory }) => ({ login, conversation, fileEdits, aiHistory }),
+    },
   ),
 )
 

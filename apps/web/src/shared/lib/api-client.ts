@@ -18,16 +18,6 @@ function jsonInit(init?: RequestInit): RequestInit {
   return { ...init, credentials: 'same-origin', headers }
 }
 
-/** Fetch JSON from a same-origin `/api` route as-is. Used for the dev AI endpoint, which isn't on the backend. */
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, jsonInit(init))
-  if (!res.ok) {
-    throw new ApiError(res.status, `${init?.method ?? 'GET'} /api${path} failed with ${res.status}`)
-  }
-  if (res.status === 204) return undefined as T
-  return (await res.json()) as T
-}
-
 const BACKEND = '/api/v1'
 const REFRESH_PATH = '/auth/refresh'
 

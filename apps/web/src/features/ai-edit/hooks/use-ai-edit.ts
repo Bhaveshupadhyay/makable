@@ -1,7 +1,8 @@
-import { type AiEditRequest, type AiEditTarget, MAX_INSTRUCTION, type TemplateEntry } from '@makable/shared'
+import { type AiEditRequest, type AiEditTarget, type AiEditTurn, MAX_INSTRUCTION, type TemplateEntry } from '@makable/shared'
 import { useIsMutating, useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import type { SiteDraft } from '@/features/visual-edit'
+import { ApiError } from '@/shared/lib/api-client'
 import { type AiEditResponse, sendAiEdit } from '../api/ai-edit'
 import { applyEditResult } from '../lib/apply-edit-result'
 import { buildEditRequest, targetLabel } from '../lib/build-edit-request'
@@ -32,28 +33,44 @@ type UseAiEditOptions = {
   previewError: { message: string } | null
   /** After a request finished, with the message to show in the chat. */
   onSent?: (instruction: string, target: string | null, result: string) => void
+  /** Earlier requests in this project, oldest first. The latest go with each request as context. */
+  history: AiEditTurn[]
+  /** Stores a finished request in the history, under the template that sent it. */
+  onRecord: (turn: AiHistoryTurn) => void
+  /** Rewrites the reply of a history entry (its change was undone). */
+  onAmend: (id: string, reply: string) => void
 }
+
+/** A history entry as stored: the turn plus an id, so a rollback can update the right one. */
+export type AiHistoryTurn = AiEditTurn & { id: string }
 
 type AiOutcome = { applied: true; changed: string[] } | { applied: false; reason: string }
 
 /** Sends AI edit requests and applies the returned file edits. */
-export function useAiEdit({ template, files, draft, onApply, onUndo, previewError, onSent }: UseAiEditOptions) {
+export function useAiEdit({ template, files, draft, onApply, onUndo, previewError, onSent, history, onRecord, onAmend }: UseAiEditOptions) {
   const mutation = useMutation({ mutationKey: MUTATION_KEY, mutationFn: sendAiEdit })
   // Set when the request fails validation before sending, so Send never silently does nothing.
   const [invalid, setInvalid] = useState<string | null>(null)
   // The response arrives later: apply it to the files and draft as they are then.
-  const latest = useRef({ files, draft, onUndo, onSent })
+  const latest = useRef({ templateId: template.id, files, draft, onUndo, onSent })
   useEffect(() => {
-    latest.current = { files, draft, onUndo, onSent }
+    latest.current = { templateId: template.id, files, draft, onUndo, onSent }
   })
-  const applied = useRef<{ draft: SiteDraft; at: number; instruction: string; target: string | null } | null>(null)
+  const applied = useRef<{
+    draft: SiteDraft
+    at: number
+    instruction: string
+    target: string | null
+    turn: AiHistoryTurn
+    amend: UseAiEditOptions['onAmend']
+  } | null>(null)
   // The pending request, so Stop can abort it.
   const inFlight = useRef<{ controller: AbortController; instruction: string; target: string | null } | null>(null)
 
   function send(instruction: string, target: AiEditTarget | null, onDone?: () => void) {
     let request: AiEditRequest
     try {
-      request = buildEditRequest(instruction, target, template, files)
+      request = buildEditRequest(instruction, target, template, files, history)
     } catch {
       setInvalid(`This request can't be sent. Keep the instruction under ${MAX_INSTRUCTION} characters.`)
       return
@@ -61,15 +78,23 @@ export function useAiEdit({ template, files, draft, onApply, onUndo, previewErro
     setInvalid(null)
     const controller = new AbortController()
     const label = target && targetLabel(target)
+    // The history callbacks of the template this request is for, even if the user switches templates meanwhile.
+    const record = onRecord
+    const amend = onAmend
+    const sentFor = template.id
     inFlight.current = { controller, instruction: request.instruction, target: label }
     mutation.mutate({ request, signal: controller.signal }, {
       onSettled: () => {
         if (inFlight.current?.controller === controller) inFlight.current = null
       },
       onSuccess: (response) => {
-        const outcome = settle(request, response)
-        if (outcome.applied) applied.current = { draft: latest.current.draft, at: Date.now(), instruction: request.instruction, target: label }
-        onSent?.(request.instruction, label, message(response, outcome))
+        // The edits are for the files that were sent: don't apply them to another template's.
+        const outcome: AiOutcome =
+          latest.current.templateId === sentFor ? settle(request, response) : { applied: false, reason: 'the template was changed while the AI worked' }
+        const turn = { id: crypto.randomUUID(), instruction: request.instruction, target: label, reply: historyReply(response, outcome) }
+        record(turn)
+        if (outcome.applied) applied.current = { draft: latest.current.draft, at: Date.now(), instruction: request.instruction, target: label, turn, amend }
+        latest.current.onSent?.(request.instruction, label, message(response, outcome))
         onDone?.()
       },
     })
@@ -93,6 +118,7 @@ export function useAiEdit({ template, files, draft, onApply, onUndo, previewErro
     const { draft: now, onUndo: undo, onSent: log } = latest.current
     if (Date.now() - change.at > ROLLBACK_WINDOW_MS || now.portfolio !== change.draft.portfolio || now.files !== change.draft.files) return
     undo()
+    change.amend(change.turn.id, `${change.turn.reply} This broke the preview, so it was undone.`)
     log?.(change.instruction, change.target, `That change broke the preview, so I undid it. Try rephrasing the request.`)
   }, [previewError])
 
@@ -111,9 +137,25 @@ export function useAiEdit({ template, files, draft, onApply, onUndo, previewErro
     send,
     stop,
     pending: mutation.isPending,
-    error: mutation.error,
+    error: mutation.error && errorMessage(mutation.error),
     invalid,
   }
+}
+
+/** What the history remembers about a finished request: what changed, or why nothing did. */
+function historyReply(response: AiEditResponse, outcome: AiOutcome): string {
+  if (response.tier === 2) return `Not done: it needs a deeper edit (${response.reason}).`
+  if (outcome.applied || outcome.reason === 'no changes') return response.summary
+  return `Not done: the edits couldn't be applied (${outcome.reason}).`
+}
+
+/** The backend's messages are written for users; anything else means the request never got an answer. */
+export function errorMessage(error: Error): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) return 'Your session has expired. Connect GitHub again to use AI edits.'
+    if (error.code) return error.message
+  }
+  return "Couldn't reach the server. Check your connection and try again."
 }
 
 function message(response: AiEditResponse, outcome: AiOutcome): string {
