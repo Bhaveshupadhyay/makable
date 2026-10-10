@@ -13,11 +13,11 @@ Playwright's Chromium is already cached at `~/Library/Caches/ms-playwright/chrom
    ```
    Wait until `curl -s localhost:5199` responds.
 
-   **AI edits run on makable-backend (`POST /api/v1/ai/edit`) and need a real signed-in session**, so with mock auth
-   the AI edit step gets a 401 and the run fails there. That step (and the code view checks after it, which look at
-   the AI-edited file) needs the backend with the fake model (`bun .claude/skills/verify-web/mock-model.mjs &`, then
-   in makable-backend `AI_BASE_URL=http://localhost:9999/v1 AI_DEBUG=true uv run uvicorn main:create_app --factory
-   --port 8787`) and a real GitHub sign-in, which a headless browser can't do. Test AI edits by hand for now.
+   **AI edits run on makable-backend (`POST /api/v1/ai/edit`) and need a real signed-in session.** The script checks
+   first: with mock auth (or no backend) it prints `- AI edit: skipped` and only checks the code view, and the rest of
+   the run continues. To run the AI steps, start the fake model (`bun .claude/skills/verify-web/mock-model.mjs &`) and
+   the backend with `AI_BASE_URL=http://localhost:9999/v1 AI_DEBUG=true`, and sign in with real GitHub, which a
+   headless browser can't do. Until then, test AI edits by hand.
 2. **Set up the runner** (once per session):
    ```sh
    cd <scratchpad> && echo '{}' > package.json && bun add playwright-core

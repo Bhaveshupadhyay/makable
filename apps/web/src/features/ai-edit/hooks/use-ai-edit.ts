@@ -35,11 +35,14 @@ type UseAiEditOptions = {
   onSent?: (instruction: string, target: string | null, result: string) => void
   /** Earlier requests in this project, oldest first. The latest go with each request as context. */
   history: AiEditTurn[]
-  /** Stores a finished request in the history. */
-  onRecord: (turn: AiEditTurn) => void
-  /** Rewrites the reply of the latest history entry (when its change was undone). */
-  onAmend: (reply: string) => void
+  /** Stores a finished request in the history, under the template that sent it. */
+  onRecord: (turn: AiHistoryTurn) => void
+  /** Rewrites the reply of a history entry (its change was undone). */
+  onAmend: (id: string, reply: string) => void
 }
+
+/** A history entry as stored: the turn plus an id, so a rollback can update the right one. */
+export type AiHistoryTurn = AiEditTurn & { id: string }
 
 type AiOutcome = { applied: true; changed: string[] } | { applied: false; reason: string }
 
@@ -49,11 +52,18 @@ export function useAiEdit({ template, files, draft, onApply, onUndo, previewErro
   // Set when the request fails validation before sending, so Send never silently does nothing.
   const [invalid, setInvalid] = useState<string | null>(null)
   // The response arrives later: apply it to the files and draft as they are then.
-  const latest = useRef({ files, draft, onUndo, onSent, onRecord, onAmend })
+  const latest = useRef({ templateId: template.id, files, draft, onUndo, onSent })
   useEffect(() => {
-    latest.current = { files, draft, onUndo, onSent, onRecord, onAmend }
+    latest.current = { templateId: template.id, files, draft, onUndo, onSent }
   })
-  const applied = useRef<{ draft: SiteDraft; at: number; instruction: string; target: string | null; reply: string } | null>(null)
+  const applied = useRef<{
+    draft: SiteDraft
+    at: number
+    instruction: string
+    target: string | null
+    turn: AiHistoryTurn
+    amend: UseAiEditOptions['onAmend']
+  } | null>(null)
   // The pending request, so Stop can abort it.
   const inFlight = useRef<{ controller: AbortController; instruction: string; target: string | null } | null>(null)
 
@@ -68,16 +78,22 @@ export function useAiEdit({ template, files, draft, onApply, onUndo, previewErro
     setInvalid(null)
     const controller = new AbortController()
     const label = target && targetLabel(target)
+    // The history callbacks of the template this request is for, even if the user switches templates meanwhile.
+    const record = onRecord
+    const amend = onAmend
+    const sentFor = template.id
     inFlight.current = { controller, instruction: request.instruction, target: label }
     mutation.mutate({ request, signal: controller.signal }, {
       onSettled: () => {
         if (inFlight.current?.controller === controller) inFlight.current = null
       },
       onSuccess: (response) => {
-        const outcome = settle(request, response)
-        const reply = historyReply(response, outcome)
-        latest.current.onRecord({ instruction: request.instruction, target: label, reply })
-        if (outcome.applied) applied.current = { draft: latest.current.draft, at: Date.now(), instruction: request.instruction, target: label, reply }
+        // The edits are for the files that were sent: don't apply them to another template's.
+        const outcome: AiOutcome =
+          latest.current.templateId === sentFor ? settle(request, response) : { applied: false, reason: 'the template was changed while the AI worked' }
+        const turn = { id: crypto.randomUUID(), instruction: request.instruction, target: label, reply: historyReply(response, outcome) }
+        record(turn)
+        if (outcome.applied) applied.current = { draft: latest.current.draft, at: Date.now(), instruction: request.instruction, target: label, turn, amend }
         latest.current.onSent?.(request.instruction, label, message(response, outcome))
         onDone?.()
       },
@@ -99,10 +115,10 @@ export function useAiEdit({ template, files, draft, onApply, onUndo, previewErro
     const change = applied.current
     if (!previewError || !change) return
     applied.current = null
-    const { draft: now, onUndo: undo, onSent: log, onAmend: amend } = latest.current
+    const { draft: now, onUndo: undo, onSent: log } = latest.current
     if (Date.now() - change.at > ROLLBACK_WINDOW_MS || now.portfolio !== change.draft.portfolio || now.files !== change.draft.files) return
     undo()
-    amend(`${change.reply} This broke the preview, so it was undone.`)
+    change.amend(change.turn.id, `${change.turn.reply} This broke the preview, so it was undone.`)
     log?.(change.instruction, change.target, `That change broke the preview, so I undid it. Try rephrasing the request.`)
   }, [previewError])
 

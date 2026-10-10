@@ -1,4 +1,5 @@
-import type { AiEditTurn, TemplateId } from '@makable/shared'
+import type { TemplateId } from '@makable/shared'
+import type { AiHistoryTurn } from '@/features/ai-edit'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
 import { useSession } from '@/features/auth'
@@ -9,7 +10,7 @@ import { type ChatContext, initialConversation, isAiRequest } from '../lib/conve
 import { useBuilderStore } from '../store'
 
 const NO_FILE_EDITS: Record<string, string> = {}
-const NO_AI_HISTORY: AiEditTurn[] = []
+const NO_AI_HISTORY: AiHistoryTurn[] = []
 
 /** The builder conversation for the current visitor (signed in or guest), plus the side effects it asks for. */
 export function useBuilder() {
@@ -113,8 +114,9 @@ export function useBuilder() {
       ctx && dispatch({ type: 'ai-sent', instruction, target, result }, ctx),
     /** Finished AI requests for the current template, oldest first. */
     aiHistory,
-    recordAiTurn: (turn: AiEditTurn) => ctx && template && recordAiTurn(template, turn),
-    amendAiTurn: (reply: string) => ctx && template && amendAiTurn(template, reply),
+    // Bound to the template of this render: the AI edit hook keeps the ones from when a request was sent.
+    recordAiTurn: (turn: AiHistoryTurn) => ctx && template && recordAiTurn(template, turn),
+    amendAiTurn: (id: string, reply: string) => ctx && template && amendAiTurn(template, id, reply),
     setDraft: (draft: SiteDraft) => ctx && setDraft(draft),
     startOver: () => ctx && reset(owner ?? null),
   }

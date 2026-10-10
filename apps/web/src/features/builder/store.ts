@@ -1,4 +1,4 @@
-import type { AiEditTurn } from '@makable/shared'
+import type { AiHistoryTurn } from '@/features/ai-edit'
 import type { SiteDraft } from '@/features/visual-edit'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
@@ -20,10 +20,10 @@ type BuilderState = {
    * Finished AI requests per template id, oldest first (instruction, selection, what happened).
    * The latest are sent with each AI request as context. Kept only here: the backend stores nothing.
    */
-  aiHistory: Record<string, AiEditTurn[]>
-  recordAiTurn: (template: string, turn: AiEditTurn) => void
-  /** Rewrites the reply of a template's latest turn (its change was undone). */
-  amendAiTurn: (template: string, reply: string) => void
+  aiHistory: Record<string, AiHistoryTurn[]>
+  recordAiTurn: (template: string, turn: AiHistoryTurn) => void
+  /** Rewrites the reply of one of a template's turns (its change was undone). */
+  amendAiTurn: (template: string, id: string, reply: string) => void
   dispatch: (event: ChatEvent, ctx: ChatContext) => void
   /** Direct changes from outside the chat (visual and AI edits). Stores the exact objects given. */
   setDraft: (draft: SiteDraft) => void
@@ -48,11 +48,11 @@ export const useBuilderStore = create<BuilderState>()(
       aiHistory: {},
       recordAiTurn: (template, turn) =>
         set(({ aiHistory }) => ({ aiHistory: { ...aiHistory, [template]: [...(aiHistory[template] ?? []), turn].slice(-MAX_STORED_TURNS) } })),
-      amendAiTurn: (template, reply) =>
+      amendAiTurn: (template, id, reply) =>
         set(({ aiHistory }) => {
           const turns = aiHistory[template]
-          if (!turns?.length) return {}
-          return { aiHistory: { ...aiHistory, [template]: [...turns.slice(0, -1), { ...turns[turns.length - 1], reply }] } }
+          if (!turns?.some((turn) => turn.id === id)) return {}
+          return { aiHistory: { ...aiHistory, [template]: turns.map((turn) => (turn.id === id ? { ...turn, reply } : turn)) } }
         }),
       dispatch: (event, ctx) => set(({ conversation }) => ({ conversation: reduceConversation(conversation, event, ctx) })),
       setDraft: ({ portfolio, files }) =>
