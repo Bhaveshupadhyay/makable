@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
+import { workspaceStateSchema } from '@makable/shared'
 import { ApiError } from '@/shared/lib/api-client'
-import { getLatestSession, getSession, saveSession } from '../api/workspace'
+import { getLatestState, getPart, getState, type SavedState, saveBatch, saveBody } from '../api/workspace'
 import { WORKSPACE_REPO } from '../lib/conversation'
-import { fingerprint, fitsKeepalive, hasContent, nextSaveDelay, RETRY_DELAY_MS, retryAfterMs } from '../lib/github-sync'
-import { parseSession, type SessionState, toSnapshot } from '../lib/session-file'
+import { fitsKeepalive, hasContent, nextSaveDelay, RETRY_DELAY_MS, retryAfterMs } from '../lib/github-sync'
+import { fromWorkspaceFiles, hashFiles, listedParts, planSave, toWorkspaceFiles } from '../lib/workspace-files'
 import { useBuilderStore } from '../store'
 import type { Builder } from './use-builder'
 
@@ -137,21 +138,32 @@ function createGithubSync(initial: Context, onStatus: (status: SyncStatus) => vo
     // Never save another account's session (it's hidden until the store is reset for this one).
     if (store.login !== account) return
     if (!hasContent(store)) return set({ state: 'idle' })
-    const print = fingerprint(store)
-    const baseSha = baseOverride !== undefined ? baseOverride : (store.synced?.sha ?? null)
-    if (baseOverride === undefined && store.synced?.fingerprint === print) return set({ state: 'saved', at: store.synced.at })
 
-    const snapshot = toSnapshot(store, account, new Date())
-    const keepalive = reason === 'close' && fitsKeepalive(JSON.stringify({ snapshot, baseSha }))
     saving = true
-    set({ state: 'saving' })
+    // Data saved in an older format has no hashes: start over as if never saved from here.
+    const synced = store.synced?.hashes ? store.synced : null
+    // Keeping this browser's version over another device's sends everything, on top of theirs.
+    const keepOver = baseOverride !== undefined
+    let baseSha = keepOver ? baseOverride : (synced?.sha ?? null)
     try {
-      const saved = await saveSession(snapshot, baseSha, { keepalive })
-      useBuilderStore.getState().markSynced({ sha: saved.sha, repoUrl: saved.repoUrl, fingerprint: print, at: snapshot.exportedAt })
-      set({ state: 'saved', at: snapshot.exportedAt })
+      const files = toWorkspaceFiles(store, account, new Date())
+      const hashes = await hashFiles(files)
+      const batches = planSave(files, hashes, keepOver ? null : (synced?.hashes ?? null))
+      if (!batches) return set({ state: 'saved', at: synced?.at ?? files.state.savedAt })
+      set({ state: 'saving' })
+      let repoUrl = synced?.repoUrl ?? null
+      for (const batch of batches) {
+        // Only a small, single-batch save can go out as the page closes (browsers cap keepalive bodies).
+        const keepalive = reason === 'close' && batches.length === 1 && fitsKeepalive(saveBody(batch, baseSha))
+        const saved = await saveBatch(store.projectId, batch, baseSha, { keepalive })
+        baseSha = saved.sha
+        repoUrl = saved.repoUrl
+      }
+      useBuilderStore.getState().markSynced({ sha: baseSha, repoUrl, hashes, at: files.state.savedAt })
+      set({ state: 'saved', at: files.state.savedAt })
       builder.sync.announce()
     } catch (e) {
-      failed(e, baseSha)
+      failed(e, keepOver ? undefined : (synced?.sha ?? null))
     } finally {
       saving = false
     }
@@ -161,15 +173,16 @@ function createGithubSync(initial: Context, onStatus: (status: SyncStatus) => vo
     }
   }
 
-  function failed(e: unknown, baseSha: string | null) {
+  /** `baseSha` is the saved state the failed save built on (undefined when it overrode a conflict). */
+  function failed(e: unknown, baseSha?: string | null) {
     if (e instanceof ApiError && e.code === 'workspace_conflict') {
       // Another tab of this browser saved meanwhile: its version is this one's past, so save over it.
-      if ((useBuilderStore.getState().synced?.sha ?? null) !== baseSha) {
+      if (baseSha !== undefined && (useBuilderStore.getState().synced?.sha ?? null) !== baseSha) {
         again = true
         return
       }
-      const details = (e.details ?? {}) as { sha?: string; exportedAt?: string }
-      return set({ state: 'conflict', remoteSha: details.sha ?? null, remoteSavedAt: details.exportedAt ?? null })
+      const details = (e.details ?? {}) as { sha?: string; savedAt?: string }
+      return set({ state: 'conflict', remoteSha: details.sha ?? null, remoteSavedAt: details.savedAt ?? null })
     }
     if (e instanceof ApiError && (e.status === 401 || (e.code && BLOCKING.has(e.code)))) {
       return set({ state: 'blocked', message: e.code === 'unauthorized' ? 'Connect GitHub again to keep saving.' : e.message })
@@ -185,9 +198,28 @@ function createGithubSync(initial: Context, onStatus: (status: SyncStatus) => vo
     schedule(RETRY_DELAY_MS, 'retry')
   }
 
-  function apply(state: SessionState, snapshot: { exportedAt: string; login: string | null }, sha: string) {
-    context.builder.sync.restore(state, snapshot, { sha, repoUrl: null, fingerprint: fingerprint(state), at: snapshot.exportedAt })
-    set({ state: 'saved', at: snapshot.exportedAt })
+  /**
+   * Downloads a saved session (its state, then each file the state lists) and makes it the current one.
+   * `isStillWanted` is checked before replacing anything, since the download takes a moment.
+   */
+  async function load(saved: SavedState, isStillWanted: () => boolean): Promise<boolean> {
+    const state = workspaceStateSchema.safeParse(saved.state)
+    if (!state.success) return false
+    const parts: Record<string, string> = {}
+    const paths = listedParts(state.data)
+    // A few at a time: a long chat is many small files.
+    for (let i = 0; i < paths.length; i += 4) {
+      const batch = paths.slice(i, i + 4)
+      const contents = await Promise.all(batch.map((path) => getPart(state.data.projectId, path)))
+      batch.forEach((path, k) => (parts[path] = contents[k]))
+    }
+    const read = fromWorkspaceFiles({ state: state.data, parts })
+    if (!read.ok || !isStillWanted()) return false
+    // Hashed as this browser will write them, so the next save sends only real changes.
+    const hashes = await hashFiles(toWorkspaceFiles(read.state, state.data.login, new Date(state.data.savedAt)))
+    context.builder.sync.restore(read.state, read.snapshot, { sha: saved.sha, repoUrl: null, hashes, at: state.data.savedAt })
+    set({ state: 'saved', at: state.data.savedAt })
+    return true
   }
 
   async function restoreLatest(account: string) {
@@ -196,12 +228,13 @@ function createGithubSync(initial: Context, onStatus: (status: SyncStatus) => vo
     const store = useBuilderStore.getState()
     if (store.login !== account || hasContent(store) || store.synced) return
     try {
-      const found = await getLatestSession()
-      const now = useBuilderStore.getState()
+      const found = await getLatestState()
       // The user started a site while this loaded: keep theirs.
-      if (!found || hasContent(now) || now.login !== account) return
-      const read = parseSession(found.snapshot)
-      if (read.ok) apply(read.state, read.snapshot, found.sha)
+      const untouched = () => {
+        const now = useBuilderStore.getState()
+        return !hasContent(now) && now.login === account
+      }
+      if (found && untouched()) await load(found, untouched)
     } catch {
       // Restoring is a convenience: on failure the user starts fresh, and saving reports its own errors.
     }
@@ -212,13 +245,11 @@ function createGithubSync(initial: Context, onStatus: (status: SyncStatus) => vo
     const { remoteSha } = status
     const projectId = useBuilderStore.getState().projectId
     try {
-      if (choice === 'keep') return await save('manual', remoteSha ?? (await getSession(projectId))?.sha ?? null)
-      const found = await getSession(projectId)
-      const read = found && parseSession(found.snapshot)
-      if (!found || !read?.ok) return set({ state: 'error', message: "Couldn't load the version on GitHub." })
-      apply(read.state, read.snapshot, found.sha)
+      if (choice === 'keep') return await save('manual', remoteSha ?? (await getState(projectId))?.sha ?? null)
+      const found = await getState(projectId)
+      if (!found || !(await load(found, () => true))) set({ state: 'error', message: "Couldn't load the version on GitHub." })
     } catch (e) {
-      failed(e, null)
+      failed(e)
     }
   }
 

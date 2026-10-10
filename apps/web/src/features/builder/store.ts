@@ -52,8 +52,11 @@ type BuilderState = {
 
 const STORAGE_KEY = 'makable:builder'
 
-/** A save to GitHub: the file's SHA (a later save sends it back), the repo, and what was saved. */
-export type Synced = { sha: string; repoUrl: string | null; fingerprint: string; at: string }
+/**
+ * The last save to GitHub: the saved state's SHA (the next save sends it back), the repo, a hash of every
+ * saved file (so a save sends only what changed since) and when.
+ */
+export type Synced = { sha: string | null; repoUrl: string | null; hashes: Record<string, string>; at: string }
 
 /** What's saved in localStorage. */
 type Persisted = Pick<

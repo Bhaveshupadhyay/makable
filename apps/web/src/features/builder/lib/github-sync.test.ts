@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { initialConversation } from './conversation'
-import { fingerprint, fitsKeepalive, hasContent, MAX_WAIT_MS, nextSaveDelay, retryAfterMs, SAVE_DELAY_MS } from './github-sync'
+import { fitsKeepalive, hasContent, MAX_WAIT_MS, nextSaveDelay, retryAfterMs, SAVE_DELAY_MS } from './github-sync'
 import type { SessionState } from './session-file'
 
 const portfolio = {
@@ -10,23 +10,11 @@ const portfolio = {
   projects: [],
   template: 'minimal',
 }
-const state: SessionState = {
-  projectId: '3f2a9c4e-8b1d-4c6a-9e2f-1a2b3c4d5e6f',
-  conversation: { ...initialConversation(), portfolio },
-  fileEdits: {},
-  aiHistory: {},
-}
+const state: Pick<SessionState, 'conversation'> = { conversation: { ...initialConversation(), portfolio } }
 
 test('only a started site is worth saving', () => {
   expect(hasContent(state)).toBe(true)
   expect(hasContent({ conversation: initialConversation() })).toBe(false)
-})
-
-test('the fingerprint changes with the content but not with transient state', () => {
-  const same = fingerprint(state)
-  expect(fingerprint({ ...state, conversation: { ...state.conversation, awaitingSignIn: true } })).toBe(same)
-  expect(fingerprint({ ...state, fileEdits: { minimal: { 'a.css': 'b' } } })).not.toBe(same)
-  expect(fingerprint({ ...state, projectId: '11111111-2222-4333-8444-555555555555' })).not.toBe(same)
 })
 
 test('keepalive bodies are capped by bytes, not characters', () => {

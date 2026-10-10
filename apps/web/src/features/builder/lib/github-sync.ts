@@ -38,22 +38,6 @@ export function hasContent(state: Pick<SessionState, 'conversation'>): boolean {
   return state.conversation.portfolio !== null
 }
 
-/**
- * A short fingerprint of what a save would write, without the save time, so an unchanged session
- * isn't committed again (after a reload, or when another tab already saved it).
- */
-export function fingerprint({ projectId, conversation, fileEdits, aiHistory }: SessionState): string {
-  const { step, messages, portfolio, githubLogin } = conversation
-  const text = JSON.stringify([projectId, step, messages, portfolio, githubLogin ?? null, fileEdits, aiHistory])
-  // FNV-1a (32-bit) plus the length: cheap, and collisions don't matter much (the next change saves anyway).
-  let hash = 0x811c9dc5
-  for (let i = 0; i < text.length; i++) {
-    hash ^= text.charCodeAt(i)
-    hash = Math.imul(hash, 0x01000193)
-  }
-  return `${(hash >>> 0).toString(16)}-${text.length}`
-}
-
 /** Whether a request body can go out as a `keepalive` request while the page closes. */
 export function fitsKeepalive(body: string): boolean {
   return new TextEncoder().encode(body).length <= KEEPALIVE_MAX_BYTES
