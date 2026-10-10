@@ -2,7 +2,8 @@ import { ApiError, backendFetch } from '@/shared/lib/api-client'
 import { safeReturnTo } from '../lib/safe-return-to'
 import type { SessionUser } from '../types'
 
-const MOCK_AUTH = import.meta.env.VITE_MOCK_AUTH === 'true'
+/** Dev only: a fake signed-in user with no backend session (so nothing that needs the backend works). */
+export const MOCK_AUTH = import.meta.env.VITE_MOCK_AUTH === 'true'
 const MOCK_KEY = 'makable:mock-session'
 const MOCK_USER: SessionUser = {
   id: 'mock-1',

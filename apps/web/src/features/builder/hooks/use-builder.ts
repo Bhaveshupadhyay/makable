@@ -1,13 +1,14 @@
-import type { TemplateId } from '@makable/shared'
+import type { SessionSnapshot, TemplateId } from '@makable/shared'
 import type { AiHistoryTurn } from '@/features/ai-edit'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
-import { useSession } from '@/features/auth'
+import { MOCK_AUTH, useSession } from '@/features/auth'
 import { useTemplateCatalog } from '@/features/templates'
 import type { SiteDraft } from '@/features/visual-edit'
 import { fetchGithubData } from '../api/github'
 import { type ChatContext, initialConversation, isAiRequest } from '../lib/conversation'
-import { useBuilderStore } from '../store'
+import { type SessionState, sessionFileName, toSnapshot } from '../lib/session-file'
+import { type Synced, useBuilderStore } from '../store'
 
 const NO_FILE_EDITS: Record<string, string> = {}
 const NO_AI_HISTORY: AiHistoryTurn[] = []
@@ -19,6 +20,7 @@ export function useBuilder() {
   const { data: catalog } = useTemplateCatalog()
   const {
     login,
+    projectId,
     conversation: stored,
     fileEdits: storedFileEdits,
     aiHistory: storedAiHistory,
@@ -26,6 +28,12 @@ export function useBuilder() {
     amendAiTurn,
     dispatch,
     setDraft,
+    importSession,
+    syncEnabled,
+    setSyncEnabled,
+    synced,
+    syncNoticeShown,
+    markSyncNoticeShown,
     claim,
     reset,
     aiMode: aiModeOn,
@@ -118,6 +126,42 @@ export function useBuilder() {
     recordAiTurn: (turn: AiHistoryTurn) => ctx && template && recordAiTurn(template, turn),
     amendAiTurn: (id: string, reply: string) => ctx && template && amendAiTurn(template, id, reply),
     setDraft: (draft: SiteDraft) => ctx && setDraft(draft),
+    /** The session as a file to download, or null while another account's session is hidden. */
+    exportSession: (): { fileName: string; snapshot: SessionSnapshot } | null => {
+      if (!ctx) return null
+      const now = new Date()
+      const who = owner ?? null
+      return {
+        fileName: sessionFileName(who, now),
+        snapshot: toSnapshot({ projectId, conversation: stored, fileEdits: storedFileEdits, aiHistory: storedAiHistory }, who, now),
+      }
+    },
+    /** Replaces the session with an imported one. It belongs to whoever imports it. */
+    importSession: (session: SessionState, snapshot: Pick<SessionSnapshot, 'exportedAt' | 'login'>) => {
+      if (!ctx) return
+      importSession(session, owner ?? null)
+      dispatch({ type: 'session-imported', source: 'file', exportedAt: snapshot.exportedAt, login: snapshot.login }, ctx)
+    },
+    /** GitHub saving: on for signed-in users whose session is shown (never another account's). */
+    sync: {
+      // Mock auth has no backend session to save with.
+      account: MOCK_AUTH ? null : (ctx?.user?.login ?? null),
+      enabled: syncEnabled,
+      setEnabled: setSyncEnabled,
+      synced,
+      /** Replaces the session with one restored from GitHub, already saved there. */
+      restore: (session: SessionState, snapshot: Pick<SessionSnapshot, 'exportedAt' | 'login'>, saved: Synced) => {
+        if (!ctx) return
+        importSession(session, owner ?? null, saved)
+        dispatch({ type: 'session-imported', source: 'github', exportedAt: snapshot.exportedAt, login: snapshot.login }, ctx)
+      },
+      /** Shows the one-time "saved to GitHub" note in the chat. */
+      announce: () => {
+        if (!ctx || syncNoticeShown) return
+        markSyncNoticeShown()
+        dispatch({ type: 'sync-started' }, ctx)
+      },
+    },
     startOver: () => ctx && reset(owner ?? null),
   }
 }

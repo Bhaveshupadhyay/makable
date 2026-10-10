@@ -1,5 +1,5 @@
 // Smoke test for the builder SPA. See SKILL.md for setup.
-import { readdirSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { chromium } from 'playwright-core'
@@ -65,7 +65,7 @@ try {
   // guest: the chat is the first page, no sign-in wall (old /login links land there too)
   await page.goto(`${BASE_URL}/login`)
   await page.waitForURL((url) => url.pathname === '/')
-  if (await page.getByRole('button', { name: 'Sign out' }).count()) throw new Error('expected a guest session')
+  if (await page.getByRole('button', { name: 'Account menu' }).count()) throw new Error('expected a guest session')
   console.log('✓ auth: guests land on the chat without signing in')
 
   // chat: start from a clean conversation
@@ -127,7 +127,7 @@ try {
   await shot('connect-github.png')
   await connect.click()
   await assistantSays('Connected as @octocat')
-  await page.getByRole('button', { name: 'Sign out' }).waitFor()
+  await page.getByRole('button', { name: 'Account menu' }).waitFor()
   await frame.getByText('Smoke test headline').waitFor({ timeout: 60000 })
   console.log('✓ auth: connect GitHub from the chat, conversation and preview kept')
 
@@ -323,16 +323,51 @@ try {
   await shot('builder-mobile.png')
   await page.setViewportSize({ width: 1280, height: 900 })
 
+  // export: the session downloads as a file with the chat, the site draft and the AI history
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: /^Export/ }).click()
+  const exported = await download
+  if (!/^makable-session-octocat-\d{4}-\d{2}-\d{2}\.json$/.test(exported.suggestedFilename())) throw new Error(`unexpected export name ${exported.suggestedFilename()}`)
+  const sessionPath = join(OUT_DIR, exported.suggestedFilename())
+  await exported.saveAs(sessionPath)
+  const session = JSON.parse(readFileSync(sessionPath, 'utf8'))
+  if (session.format !== 'makable-session' || session.login !== 'octocat' || !session.conversation.portfolio?.profile.headline) throw new Error('the exported session is missing its content')
+  const exportedMessages = session.conversation.messages.length
+  console.log(`✓ session: exported ${exportedMessages} messages and the site draft`)
+
   // start over: back to the greeting, preview closed
   await page.getByRole('button', { name: 'Start over' }).click()
   await page.getByRole('button', { name: 'I want a portfolio' }).waitFor()
   if (await page.locator('iframe[title="Portfolio preview"]').count()) throw new Error('preview still open after start over')
   console.log('✓ chat: start over')
 
+  // import: a broken file is refused; the exported file replaces the session after asking
+  const sessionInput = page.locator('input[type="file"][accept*="json"]')
+  await sessionInput.setInputFiles({ name: 'notes.json', mimeType: 'application/json', buffer: Buffer.from('{"hello":1}') })
+  await page.getByRole('alert').filter({ hasText: "That file isn't a makable session." }).waitFor()
+  await sessionInput.setInputFiles(sessionPath)
+  const confirm = page.getByRole('dialog', { name: 'Replace session' })
+  await confirm.getByText(`${exportedMessages} messages`).waitFor()
+  await shot('session-import.png')
+  await confirm.getByRole('button', { name: 'Cancel' }).click()
+  if (await page.locator('iframe[title="Portfolio preview"]').count()) throw new Error('cancel should leave the session alone')
+  await sessionInput.setInputFiles(sessionPath)
+  await confirm.getByRole('button', { name: 'Replace' }).click()
+  await assistantSays('Imported your session from')
+  await frame.getByText('static edited').first().waitFor({ timeout: 60000 })
+  console.log('✓ session: a broken file is refused; import asks, then brings back the chat and the site')
+  await page.getByRole('button', { name: 'Start over' }).click()
+  await page.getByRole('button', { name: 'I want a portfolio' }).waitFor()
+
   // sign out: back to a fresh guest chat
   await say('I want a portfolio')
   await page.getByRole('group', { name: 'Templates' }).last().waitFor()
-  await page.getByRole('button', { name: 'Sign out' }).click()
+  // Sign out lives in the account menu behind the avatar.
+  await page.getByRole('button', { name: 'Account menu' }).click()
+  const accountMenu = page.getByRole('menu')
+  await accountMenu.getByText('@octocat').waitFor()
+  await shot('account-menu.png')
+  await accountMenu.getByRole('menuitem', { name: 'Sign out' }).click()
   await page.getByRole('button', { name: 'I want a portfolio' }).waitFor()
   if (await page.getByRole('group', { name: 'Templates' }).count()) throw new Error("account's chat still shown after sign out")
   console.log('✓ auth: signed out to a fresh guest chat')
