@@ -1,8 +1,8 @@
 import { backendFetch } from '@/shared/lib/api-client'
 
 // Publishing through makable-backend: it builds the site from the session saved in the user's private
-// `makable-workspace` repo, commits it with a deploy workflow to a site repo on their GitHub, and the push
-// deploys it to the platform they picked.
+// `makable-workspace` repo, commits it with a deploy workflow to a site repo on their GitHub, and starts the deploy
+// to the platform they picked. Pushes never deploy: only a publish (or "Deploy now") does.
 
 export type PublishTarget = 'github-pages' | 'vercel' | 'cloudflare-pages' | 'netlify'
 
@@ -26,8 +26,12 @@ export type PublishResult = {
   repoUrl: string
   branch: string
   commitSha: string
-  /** `started`: deploying. `waiting_for_secrets`: add `missingSecrets` on GitHub first. `unchanged`: nothing to do. */
-  deploy: 'started' | 'waiting_for_secrets' | 'unchanged'
+  /** Whether this publish committed anything. Either way it deploys what's on GitHub. */
+  changed: boolean
+  /** `started`: deploying. `waiting_for_secrets`: not started; add `missingSecrets` on GitHub first. */
+  deploy: 'started' | 'waiting_for_secrets'
+  /** When the deploy started (UTC, to the second): pass it to `getPublishStatus` to follow this deploy's run. */
+  deployStartedAt: string | null
   siteUrl: string | null
   projectName: string | null
   missingSecrets: string[]
@@ -47,7 +51,10 @@ export function publishSite(projectId: string, request: PublishRequest): Promise
 }
 
 /** Runs the deploy workflow again (after the user added the secrets on GitHub, or with a pasted token). */
-export function deploySite(projectId: string, request: { repoName: string; credentials?: PublishCredentials }): Promise<{ repoUrl: string; actionsUrl: string }> {
+export function deploySite(
+  projectId: string,
+  request: { repoName: string; credentials?: PublishCredentials },
+): Promise<{ repoUrl: string; actionsUrl: string; startedAt: string }> {
   return backendFetch(`/publish/${projectId}/deploy`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -55,6 +62,8 @@ export function deploySite(projectId: string, request: { repoName: string; crede
   })
 }
 
-export function getPublishStatus(projectId: string, repoName: string): Promise<PublishStatus> {
-  return backendFetch<PublishStatus>(`/publish/${projectId}/status?repoName=${encodeURIComponent(repoName)}`)
+/** The deploy workflow's latest run; with `since` (a deploy's start time), only a run started then or later. */
+export function getPublishStatus(projectId: string, repoName: string, since?: string): Promise<PublishStatus> {
+  const query = new URLSearchParams({ repoName, ...(since ? { since } : {}) })
+  return backendFetch<PublishStatus>(`/publish/${projectId}/status?${query}`)
 }

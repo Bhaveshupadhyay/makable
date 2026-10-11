@@ -32,8 +32,9 @@ The run also exports the session (checks the file), starts over, refuses a broke
 **Publishing** needs a signed-in session, so it has its own script, `publish-smoke.mjs`: the real SPA against a scripted
 makable-backend (Playwright routes answer `/api/v1`). Start the dev server **without** mock auth
 (`VITE_MOCK_AUTH=false bun --bun vite --port 5199 --strictPort`), copy the script next to `smoke.mjs` and run
-`bun publish-smoke.mjs`. It covers Vercel with a pasted token (saved first, the saved SHA sent, the deploy followed until
-live, and the token never in the chat, localStorage or the workspace saves), a republish with an overwrite prompt, and
+`bun publish-smoke.mjs`. It covers Vercel with a pasted token (saved first, the saved SHA sent, the deploy followed by its start time until
+live, and the token never in the chat, localStorage or the workspace saves), a republish with an overwrite prompt that
+still deploys with nothing new, and
 Netlify with the secret added on GitHub (deploy refused until it's there, a failed deploy). Screenshots:
 `publish-token.png`, `publish-live.png`, `publish-failed.png`. It never reaches GitHub or a hosting platform; test a real
 publish by hand with the backend running.
