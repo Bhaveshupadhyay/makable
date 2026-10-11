@@ -6,12 +6,14 @@ import type { Builder } from '../hooks/use-builder'
 import { ChatMessage } from './chat-message'
 import { Composer } from './composer'
 import { ConnectGithub } from './connect-github'
+import { PublishTokenForm } from './publish-token-form'
 import { TemplatePicker } from './template-picker'
+import { TARGETS } from '../lib/publish-flow'
 
 /** The conversation: messages with inline widgets and quick replies, and the composer. */
 export function ChatPanel({ builder, className }: { builder: Builder; className?: string }) {
   const { conversation, busy, send, selectTemplate, startOver } = builder
-  const { messages, portfolio } = conversation
+  const { messages, portfolio, publish } = conversation
   const endRef = useRef<HTMLDivElement>(null)
   const latest = messages.at(-1)
   const fresh = messages.length === 1
@@ -44,6 +46,11 @@ export function ChatPanel({ builder, className }: { builder: Builder; className?
                 <TemplatePicker selected={portfolio?.template} onSelect={selectTemplate} disabled={busy} />
               )}
               {message.widget === 'connect-github' && <ConnectGithub />}
+              {/* Publishing's inline parts live in this browser only (the token never enters the chat). */}
+              {message === latest && publish?.stage === 'token' && (
+                <PublishTokenForm platform={TARGETS[publish.target ?? 'vercel'].name} onSubmit={builder.publish.enterToken} />
+              )}
+              {message === latest && publish?.stage === 'reconnect' && <ConnectGithub reconnect />}
               {message === latest && !busy && message.replies && message.replies.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {message.replies.map((reply) => (
@@ -58,7 +65,13 @@ export function ChatPanel({ builder, className }: { builder: Builder; className?
           {busy && (
             <p className="flex items-center gap-2 pl-8 text-xs text-muted-foreground">
               <LoaderCircle className="size-3.5 animate-spin" />
-              Working…
+              {publish?.stage === 'running' ? 'Publishing…' : 'Working…'}
+            </p>
+          )}
+          {publish?.stage === 'deploying' && (
+            <p className="flex items-center gap-2 pl-8 text-xs text-muted-foreground">
+              <LoaderCircle className="size-3.5 animate-spin" />
+              Deploying to {TARGETS[publish.target ?? 'github-pages'].name}…
             </p>
           )}
           <div ref={endRef} />

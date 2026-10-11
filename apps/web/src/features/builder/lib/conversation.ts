@@ -2,6 +2,20 @@ import type { Portfolio, TemplateId } from '@makable/shared'
 import type { GithubData } from '../api/github'
 import { applyGithubData } from './github-content'
 import { isSkip, parseEmail, parseGithubLogin, parseLinks } from './parse'
+import {
+  awaitingPublishAnswer,
+  PUBLISH,
+  PUBLISH_REQUEST,
+  type PublishContext,
+  type PublishEvent,
+  type PublishFlow,
+  type Published,
+  publishAfterSignIn,
+  publishOutcome,
+  publishText,
+  startPublish,
+  tokenEntered,
+} from './publish-flow'
 
 // The guided chat that builds a portfolio. A pure reducer: (state, event) → state.
 // It stands in for the AI agent (plan §3) until that exists, and keeps the same
@@ -29,6 +43,10 @@ export type Conversation = {
   githubLogin?: string
   /** A guest asked for an AI feature and was asked to connect GitHub. */
   awaitingSignIn?: boolean
+  /** What the sign-in is for, when it isn't AI edits. */
+  signInFor?: 'publish'
+  /** Publishing in progress or waiting for the user's answer (see publish-flow.ts). Kept in this browser only. */
+  publish?: PublishFlow
 }
 
 export type ChatEvent =
@@ -46,6 +64,7 @@ export type ChatEvent =
   | { type: 'session-imported'; source: 'file' | 'github'; exportedAt: string; login: string | null }
   /** The session was saved to the user's private GitHub workspace for the first time. */
   | { type: 'sync-started' }
+  | PublishEvent
 
 export type TemplateOption = { id: TemplateId; name: string }
 
@@ -55,7 +74,7 @@ export type ChatUser = { login: string; name: string | null; avatarUrl: string }
  * The signed-in user (null for a guest), used for first-draft content before GitHub
  * is looked up, and the published templates (empty until the catalog loads).
  */
-export type ChatContext = { user: ChatUser | null; templates: readonly TemplateOption[] }
+export type ChatContext = { user: ChatUser | null; templates: readonly TemplateOption[]; published?: Published | null }
 
 const id = () => crypto.randomUUID()
 const user = (text: string): ChatMessage => ({ id: id(), role: 'user', text })
@@ -114,7 +133,7 @@ export function promptFor(step: Step, portfolio: Portfolio | null, ctx: ChatCont
     case 'done':
       return assistant(
         'Your portfolio is ready. Click any text in the preview to edit it, or pick a different template anytime.',
-        { replies: [AI_EDIT, 'Change template'] },
+        { replies: [AI_EDIT, 'Change template', PUBLISH] },
       )
     case 'intent':
     case 'github-loading':
@@ -183,6 +202,7 @@ function requestAiEdit(state: Conversation, ctx: ChatContext, text: string): Con
 export function isAiRequest(state: Conversation, text: string): boolean {
   const t = text.trim()
   if (!t || !state.portfolio || state.step === 'github-loading') return false
+  if (awaitingPublishAnswer(state.publish) || PUBLISH_REQUEST.test(t)) return false
   return t.toLowerCase() === AI_EDIT.toLowerCase() || (state.step === 'done' && !CHANGE_TEMPLATE.test(t))
 }
 
@@ -196,8 +216,25 @@ function matchTemplate(text: string, templates: readonly TemplateOption[]): Temp
   return templates.find((t) => lower.includes(t.id) || lower.includes(t.name.toLowerCase()))?.id
 }
 
+function publishContext(state: Conversation, ctx: ChatContext): PublishContext {
+  return { login: ctx.user?.login ?? null, published: ctx.published ?? null, resume: promptFor(state.step, state.portfolio, ctx).replies }
+}
+
 export function reduceConversation(state: Conversation, event: ChatEvent, ctx: ChatContext): Conversation {
   switch (event.type) {
+    case 'publish':
+      if (!state.portfolio || state.step === 'github-loading') return state
+      return startPublish(state, publishContext(state, ctx))
+
+    case 'publish-token':
+      return tokenEntered(state, event.last4)
+
+    case 'publish-done':
+    case 'publish-failed':
+    case 'deploy-started':
+    case 'deploy-finished':
+      return publishOutcome(state, event, publishContext(state, ctx))
+
     case 'select-template': {
       const name = ctx.templates.find((t) => t.id === event.template)?.name ?? event.template
       const portfolio = state.portfolio ? { ...state.portfolio, template: event.template } : firstDraft(event.template, ctx)
@@ -225,6 +262,7 @@ export function reduceConversation(state: Conversation, event: ChatEvent, ctx: C
 
     case 'signed-in': {
       if (!state.awaitingSignIn || !ctx.user) return state
+      if (state.signInFor === 'publish') return publishAfterSignIn(state, publishContext(state, ctx))
       const resumed = { ...state, awaitingSignIn: false }
       return reply(resumed, `Connected as @${ctx.user.login}. ${AI_HOWTO}${resumeStep(resumed, ctx)}`, {
         replies: promptFor(state.step, state.portfolio, ctx).replies,
@@ -263,6 +301,9 @@ export function reduceConversation(state: Conversation, event: ChatEvent, ctx: C
     case 'user-text': {
       const text = event.text.trim()
       if (!text || state.step === 'github-loading') return state
+      const answer = publishText(state, text, publishContext(state, ctx))
+      if (answer) return answer
+      if (state.portfolio && PUBLISH_REQUEST.test(text)) return startPublish(state, publishContext(state, ctx), text)
       if (state.portfolio && text.toLowerCase() === AI_EDIT.toLowerCase()) return requestAiEdit(state, ctx, AI_EDIT)
       const s = { ...state, messages: [...state.messages, user(text)] }
 

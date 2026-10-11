@@ -21,7 +21,7 @@ export type SyncStatus =
   /** Another device saved this session since this browser last did. Nothing was overwritten. */
   | { state: 'conflict'; remoteSha: string | null; remoteSavedAt: string | null }
 
-type Reason = 'change' | 'retry' | 'hidden' | 'close' | 'manual'
+type Reason = 'change' | 'retry' | 'hidden' | 'close' | 'manual' | 'publish'
 type Context = { active: boolean; account: string | null; builder: Pick<Builder, 'sync'> }
 
 // Answers that say how long to wait (`details.retryAfter`), and what to tell the user meanwhile.
@@ -88,6 +88,11 @@ export function useGithubSync(builder: Pick<Builder, 'sync' | 'status'>) {
     enabled,
     setEnabled: builder.sync.setEnabled,
     saveNow: () => void sync.save('manual'),
+    /**
+     * Saves now, even with automatic saving off, and resolves with the saved state's SHA: what Publish sends.
+     * Throws an `ApiError` when it can't (`workspace_conflict`, a rate limit, or why the save failed).
+     */
+    flush: () => sync.flush(),
     /** Resolves a conflict: keep this browser's version (overwrite GitHub's) or load GitHub's (replace this one). */
     resolve: (choice: 'keep' | 'load') => void sync.resolve(choice),
     repoUrl: builder.sync.synced?.repoUrl ?? (account ? `https://github.com/${account}/${WORKSPACE_REPO}` : null),
@@ -106,6 +111,8 @@ function createGithubSync(initial: Context, onStatus: (status: SyncStatus) => vo
   // When the oldest change not yet saved happened (for the maximum wait), and GitHub's wait after a rate limit.
   let firstUnsavedAt: number | null = null
   let notBefore = 0
+  // Why the last save failed (the backend's code), for flush.
+  let lastErrorCode: string | undefined
   const restored = new Set<string>()
 
   const set = (next: SyncStatus) => {
@@ -131,13 +138,14 @@ function createGithubSync(initial: Context, onStatus: (status: SyncStatus) => vo
 
   async function save(reason: Reason, baseOverride?: string | null): Promise<void> {
     const { active, account, builder } = context
-    if (!active || !account) return
+    // Publishing saves even with automatic saving off.
+    if (!account || (!active && reason !== 'publish')) return
     if (saving) {
       again = true
       return
     }
     // A conflict or a blocked save waits for the user; only their own action retries it.
-    if ((status.state === 'conflict' || status.state === 'blocked') && reason !== 'manual') return
+    if ((status.state === 'conflict' || status.state === 'blocked') && reason !== 'manual' && reason !== 'publish') return
     // GitHub asked to wait: the retry timer is already set for when it's over.
     if (Date.now() < notBefore) return
     firstUnsavedAt = null
@@ -182,6 +190,7 @@ function createGithubSync(initial: Context, onStatus: (status: SyncStatus) => vo
 
   /** `baseSha` is the saved state the failed save built on (undefined when it overrode a conflict). */
   function failed(e: unknown, baseSha?: string | null) {
+    lastErrorCode = e instanceof ApiError ? e.code : undefined
     if (e instanceof ApiError && e.code === 'workspace_conflict') {
       // Another tab of this browser saved meanwhile: its version is this one's past, so save over it.
       if (baseSha !== undefined && (useBuilderStore.getState().synced?.sha ?? null) !== baseSha) {
@@ -261,9 +270,32 @@ function createGithubSync(initial: Context, onStatus: (status: SyncStatus) => vo
     }
   }
 
+  async function flush(): Promise<string> {
+    const settled = async () => {
+      while (saving) await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    const conflict = () => new ApiError(409, 'This chat was changed on another device.', 'workspace_conflict')
+    await settled()
+    if (status.state === 'conflict') throw conflict()
+    const wait = notBefore - Date.now()
+    if (wait > 0) {
+      throw new ApiError(429, `GitHub asked makable to slow down. Try again in ${Math.ceil(wait / 60_000)} min.`, 'github_rate_limited', { retryAfter: Math.ceil(wait / 1000) })
+    }
+    lastErrorCode = undefined
+    await save('publish')
+    await settled()
+    // Read through a function: TypeScript can't see that the save changed it.
+    const after = status as SyncStatus
+    const sha = useBuilderStore.getState().synced?.sha
+    if (after.state === 'conflict') throw conflict()
+    if (after.state === 'saved' && sha) return sha
+    const message = after.state === 'error' || after.state === 'blocked' ? after.message : "Couldn't save your site to GitHub first."
+    throw new ApiError(0, message, lastErrorCode ?? 'save_failed')
+  }
+
   function update(next: Context) {
     context = next
   }
 
-  return { update, changed, cancel, save, restoreLatest, resolve }
+  return { update, changed, cancel, save, flush, restoreLatest, resolve }
 }
