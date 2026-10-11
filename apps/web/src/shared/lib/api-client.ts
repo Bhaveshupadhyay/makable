@@ -2,12 +2,15 @@ export class ApiError extends Error {
   readonly status: number
   /** The backend's error code (e.g. `unauthorized`), when it sent an error envelope. */
   readonly code: string | undefined
+  /** Extra data the backend sent with the error (e.g. the current version on a conflict). */
+  readonly details: unknown
 
-  constructor(status: number, message: string, code?: string) {
+  constructor(status: number, message: string, code?: string, details?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.details = details
   }
 }
 
@@ -23,7 +26,7 @@ const REFRESH_PATH = '/auth/refresh'
 
 type Envelope<T> =
   | { success: true; data: T }
-  | { success: false; error: { code: string; message: string }; requestId?: string }
+  | { success: false; error: { code: string; message: string; details?: unknown }; requestId?: string }
 
 let refreshing: Promise<boolean> | null = null
 
@@ -76,5 +79,6 @@ export async function backendFetch<T>(path: string, init?: RequestInit): Promise
     res.status,
     error?.message ?? `${init?.method ?? 'GET'} ${BACKEND}${path} failed with ${res.status}`,
     error?.code,
+    error?.details,
   )
 }

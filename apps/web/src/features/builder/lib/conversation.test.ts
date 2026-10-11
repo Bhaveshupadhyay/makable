@@ -227,3 +227,23 @@ test('isAiRequest matches what the reducer treats as an AI request', () => {
   expect(isAiRequest(done, 'change template')).toBe(false)
   expect(isAiRequest({ ...done, step: 'github-loading' }, AI_EDIT)).toBe(false)
 })
+
+test('an imported session is announced, and the open question is asked again', () => {
+  const atBio = run([say('portfolio'), { type: 'select-template', template: 'minimal' }, say('octocat'), { type: 'github-loaded', data: { ...github, profile: { ...github.profile, bio: null } } }, say('Engineer')])
+  const imported = run([{ type: 'session-imported', source: 'file', exportedAt: '2026-10-10T12:00:00.000Z', login: 'octocat' }], atBio)
+  expect(imported.step).toBe('bio')
+  expect(last(imported).text).toStartWith('Imported your session from 2026-10-10. ')
+  expect(last(imported).text).not.toContain('exported by')
+  expect(last(imported).replies).toEqual(['Skip', AI_EDIT])
+  const fromOther = run([{ type: 'session-imported', source: 'file', exportedAt: '2026-10-10T12:00:00.000Z', login: 'hubot' }], atBio)
+  expect(last(fromOther).text).toContain("It was exported by @hubot; it's yours now.")
+})
+
+test('a session restored from GitHub says so, and the first save to GitHub is announced once', () => {
+  const atBio = run([say('portfolio'), { type: 'select-template', template: 'minimal' }, say('octocat'), { type: 'github-loaded', data: { ...github, profile: { ...github.profile, bio: null } } }, say('Engineer')])
+  const restored = run([{ type: 'session-imported', source: 'github', exportedAt: '2026-10-11T09:00:00.000Z', login: 'octocat' }], atBio)
+  expect(last(restored).text).toStartWith('Restored your session from GitHub, saved 2026-10-11. ')
+  const started = run([{ type: 'sync-started' }], atBio)
+  expect(last(started).text).toContain('private makable-workspace repo')
+  expect(last(started).replies).toEqual(['Skip', AI_EDIT])
+})

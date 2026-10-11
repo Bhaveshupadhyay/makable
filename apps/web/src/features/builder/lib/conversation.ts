@@ -7,7 +7,8 @@ import { isSkip, parseEmail, parseGithubLogin, parseLinks } from './parse'
 // It stands in for the AI agent (plan §3) until that exists, and keeps the same
 // shape: the user chats, and the portfolio (and so the preview) changes.
 
-export type Step = 'intent' | 'template' | 'github' | 'github-loading' | 'headline' | 'bio' | 'email' | 'links' | 'done'
+export const STEPS = ['intent', 'template', 'github', 'github-loading', 'headline', 'bio', 'email', 'links', 'done'] as const
+export type Step = (typeof STEPS)[number]
 
 export type ChatMessage = {
   id: string
@@ -41,6 +42,10 @@ export type ChatEvent =
   | { type: 'ai-edit' }
   /** An AI edit request went out from the box under the preview. `target` labels the selected element. */
   | { type: 'ai-sent'; instruction: string; target: string | null; result: string }
+  /** A session replaced the conversation: from a file, or restored from the GitHub workspace. `login` is who saved it. */
+  | { type: 'session-imported'; source: 'file' | 'github'; exportedAt: string; login: string | null }
+  /** The session was saved to the user's private GitHub workspace for the first time. */
+  | { type: 'sync-started' }
 
 export type TemplateOption = { id: TemplateId; name: string }
 
@@ -60,6 +65,8 @@ const WANTS_PORTFOLIO = /\b(portfolio|site|website|cv|resume|yes|yeah|sure|ok|ok
 const LINK_LABELS = { linkedin: 'LinkedIn', x: 'X', website: 'your website' } as const
 /** Quick reply and toolbar label for AI edits. Offered at every step once the preview is open. */
 export const AI_EDIT = 'Edit with AI'
+/** The private repo on the user's GitHub account where sessions are saved (makable-backend creates it). */
+export const WORKSPACE_REPO = 'makable-workspace'
 const AI_HOWTO = 'Click the part of the preview you want to change, then describe the change in the box under the preview.'
 const CONNECT_GITHUB = "AI edits run on your GitHub account, so connect it first. Everything you've built so far stays here."
 const CHANGE_TEMPLATE = /\b(change|switch|another|different|show)\b.*\b(template|design|look|theme)s?\b|^templates?$/i
@@ -231,6 +238,21 @@ export function reduceConversation(state: Conversation, event: ChatEvent, ctx: C
         event.result,
         { replies: promptFor(state.step, state.portfolio, ctx).replies },
       )
+    }
+
+    case 'session-imported': {
+      const from = event.login && event.login !== ctx.user?.login ? ` It was exported by @${event.login}; it's yours now.` : ''
+      const prompt = promptFor(state.step, state.portfolio, ctx)
+      const next = state.step === 'done' ? '' : ` ${prompt.text}`
+      const lead = event.source === 'github' ? 'Restored your session from GitHub, saved' : 'Imported your session from'
+      return reply(state, `${lead} ${event.exportedAt.slice(0, 10)}.${from}${next}`, { replies: prompt.replies })
+    }
+
+    case 'sync-started': {
+      if (!ctx.user) return state
+      return reply(state, `Your chat and site are now saved to a private ${WORKSPACE_REPO} repo on your GitHub account, so you can pick up where you left off on any device. You can turn this off from the cloud button at the top.`, {
+        replies: promptFor(state.step, state.portfolio, ctx).replies,
+      })
     }
 
     case 'ai-edit': {

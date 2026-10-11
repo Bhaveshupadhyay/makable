@@ -1,8 +1,10 @@
+import { MAX_STORED_TURNS } from '@makable/shared'
 import type { AiHistoryTurn } from '@/features/ai-edit'
 import type { SiteDraft } from '@/features/visual-edit'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { type ChatContext, type ChatEvent, type Conversation, initialConversation, reduceConversation } from './lib/conversation'
+import type { SessionState } from './lib/session-file'
 
 type BuilderState = {
   /**
@@ -10,6 +12,8 @@ type BuilderState = {
    * this browser starts fresh; a guest's conversation is claimed when they connect GitHub.
    */
   login: string | null
+  /** A permanent id for this site, kept in exported sessions. "Start over" begins a new site with a new id. */
+  projectId: string
   conversation: Conversation
   /**
    * Project files changed by AI code edits, per template id (repo path → full contents). They're
@@ -30,19 +34,41 @@ type BuilderState = {
   /** "Edit with AI" mode for the preview. Not persisted. */
   aiMode: boolean
   setAiMode: (aiMode: boolean) => void
+  /** Save the session to the user's private GitHub workspace automatically. On by default. */
+  syncEnabled: boolean
+  setSyncEnabled: (enabled: boolean) => void
+  /** The version of this session last saved to GitHub (null: never saved from here). */
+  synced: Synced | null
+  markSynced: (synced: Synced | null) => void
+  /** The "your chat is saved to GitHub" note was shown in the chat. */
+  syncNoticeShown: boolean
+  markSyncNoticeShown: () => void
+  /** Replaces the whole session with an imported one, for `login` (whoever imported it). `synced` when it came from GitHub. */
+  importSession: (session: SessionState, login: string | null, synced?: Synced | null) => void
   /** Hands a guest's conversation to the account they just connected. */
   claim: (login: string) => void
   reset: (login: string | null) => void
 }
 
 const STORAGE_KEY = 'makable:builder'
-// More than a request sends, so the history stays useful for exporting and syncing later.
-const MAX_STORED_TURNS = 50
+
+/**
+ * The last save to GitHub: the saved state's SHA (the next save sends it back), the repo, a hash of every
+ * saved file (so a save sends only what changed since) and when.
+ */
+export type Synced = { sha: string | null; repoUrl: string | null; hashes: Record<string, string>; at: string }
+
+/** What's saved in localStorage. */
+type Persisted = Pick<
+  BuilderState,
+  'login' | 'projectId' | 'conversation' | 'fileEdits' | 'aiHistory' | 'syncEnabled' | 'synced' | 'syncNoticeShown'
+>
 
 export const useBuilderStore = create<BuilderState>()(
   persist(
     (set) => ({
       login: null,
+      projectId: crypto.randomUUID(),
       conversation: initialConversation(),
       fileEdits: {},
       aiHistory: {},
@@ -62,13 +88,44 @@ export const useBuilderStore = create<BuilderState>()(
         })),
       aiMode: false,
       setAiMode: (aiMode) => set({ aiMode }),
+      syncEnabled: true,
+      setSyncEnabled: (syncEnabled) => set({ syncEnabled }),
+      synced: null,
+      markSynced: (synced) => set({ synced }),
+      syncNoticeShown: false,
+      markSyncNoticeShown: () => set({ syncNoticeShown: true }),
+      importSession: ({ projectId, conversation, fileEdits, aiHistory }, login, synced = null) =>
+        set({ login, projectId, conversation, fileEdits, aiHistory, synced, aiMode: false }),
       claim: (login) => set({ login }),
-      reset: (login) => set({ login, conversation: initialConversation(), fileEdits: {}, aiHistory: {}, aiMode: false }),
+      reset: (login) =>
+        set({
+          login,
+          projectId: crypto.randomUUID(),
+          conversation: initialConversation(),
+          fileEdits: {},
+          aiHistory: {},
+          synced: null,
+          aiMode: false,
+        }),
     }),
     {
       name: STORAGE_KEY,
-      version: 1,
-      partialize: ({ login, conversation, fileEdits, aiHistory }) => ({ login, conversation, fileEdits, aiHistory }),
+      version: 2,
+      partialize: ({ login, projectId, conversation, fileEdits, aiHistory, syncEnabled, synced, syncNoticeShown }): Persisted => ({
+        login,
+        projectId,
+        conversation,
+        fileEdits,
+        aiHistory,
+        syncEnabled,
+        synced,
+        syncNoticeShown,
+      }),
+      // v1 had no project id: give the stored site one, once.
+      migrate: (stored, version) => {
+        const state = stored as Persisted
+        return version < 2 ? { ...state, projectId: crypto.randomUUID() } : state
+      },
     },
   ),
 )
