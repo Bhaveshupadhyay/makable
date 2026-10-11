@@ -29,5 +29,15 @@ Playwright's Chromium is already cached at `~/Library/Caches/ms-playwright/chrom
 
 The run also exports the session (checks the file), starts over, refuses a broken file, then imports the export (Cancel first, then Replace) and checks the site comes back. The exported file lands in `OUT_DIR`.
 
-When a feature adds a new flow, extend `smoke.mjs` here, rather than writing a one-off script.
+**Publishing** needs a signed-in session, so it has its own script, `publish-smoke.mjs`: the real SPA against a scripted
+makable-backend (Playwright routes answer `/api/v1`). Start the dev server **without** mock auth
+(`VITE_MOCK_AUTH=false bun --bun vite --port 5199 --strictPort`), copy the script next to `smoke.mjs` and run
+`bun publish-smoke.mjs`. It covers Vercel with a pasted token (saved first, the saved SHA sent, the deploy followed until
+live, and the token never in the chat, localStorage or the workspace saves), a republish with an overwrite prompt, and
+Netlify with the secret added on GitHub (deploy refused until it's there, a failed deploy). Screenshots:
+`publish-token.png`, `publish-live.png`, `publish-failed.png`. It never reaches GitHub or a hosting platform; test a real
+publish by hand with the backend running.
+
+When a feature adds a new flow, extend `smoke.mjs` here (or `publish-smoke.mjs` for publishing), rather than writing a
+one-off script.
 Notes: on macOS, Home/End scroll the page instead of moving the caret, even in an editable. Use `Meta+ArrowLeft/Right` to move the caret in tests. The chat's GitHub lookup calls the public GitHub API (60 req/h per IP), and the preview needs network access to the CodeSandbox bundler, the jsDelivr CDN (Tailwind and the Monaco editor) and the published template catalog on GitHub Pages.

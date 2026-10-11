@@ -7,6 +7,8 @@ import { useTemplateCatalog } from '@/features/templates'
 import type { SiteDraft } from '@/features/visual-edit'
 import { fetchGithubData } from '../api/github'
 import { type ChatContext, initialConversation, isAiRequest } from '../lib/conversation'
+import { awaitingToken, type PublishEvent } from '../lib/publish-flow'
+import { publishToken } from '../lib/publish-token'
 import { type SessionState, sessionFileName, toSnapshot } from '../lib/session-file'
 import { type Synced, useBuilderStore } from '../store'
 
@@ -38,6 +40,8 @@ export function useBuilder() {
     reset,
     aiMode: aiModeOn,
     setAiMode,
+    published,
+    setPublished,
   } = useBuilderStore()
 
   // Who is building: a GitHub login, null for a guest, or undefined while the session loads.
@@ -49,8 +53,8 @@ export function useBuilder() {
   // browser) or an account's. Another account's is never shown, not even for one frame:
   // until the effect below resets it, show a fresh conversation and ignore actions.
   const ctx = useMemo<ChatContext | null>(
-    () => (owner !== undefined && (login === owner || login === null) ? { user, templates: catalog?.templates ?? [] } : null),
-    [owner, user, login, catalog],
+    () => (owner !== undefined && (login === owner || login === null) ? { user, templates: catalog?.templates ?? [], published } : null),
+    [owner, user, login, catalog, published],
   )
   const conversation = useMemo(() => (ctx ? stored : initialConversation()), [ctx, stored])
   // AI-edited files for the current template. A stable object, so the visual editor's history
@@ -70,13 +74,14 @@ export function useBuilder() {
     else reset(owner ?? null)
   }, [session.isSuccess, login, owner, claim, reset])
 
-  // A guest who asked for an AI feature comes back from GitHub signed in: pick the chat back up.
+  // A guest who asked for an AI feature (or to publish) comes back from GitHub signed in: pick the chat back up.
   const awaitingSignIn = conversation.awaitingSignIn
+  const signInFor = conversation.signInFor
   useEffect(() => {
     if (!awaitingSignIn || !ctx?.user) return
     dispatch({ type: 'signed-in' }, ctx)
-    setAiMode(true)
-  }, [awaitingSignIn, ctx, dispatch, setAiMode])
+    if (signInFor !== 'publish') setAiMode(true)
+  }, [awaitingSignIn, signInFor, ctx, dispatch, setAiMode])
 
   // The conversation asks for a GitHub lookup by entering `github-loading`. This also resumes after a reload.
   const githubLogin = conversation.step === 'github-loading' ? conversation.githubLogin : undefined
@@ -103,9 +108,15 @@ export function useBuilder() {
      */
     status: owner === undefined ? 'loading' : session.isError && login !== null ? 'offline' : 'ready',
     retry: () => session.refetch(),
-    busy: conversation.step === 'github-loading',
+    busy: conversation.step === 'github-loading' || conversation.publish?.stage === 'running',
     send: (text: string) => {
       if (!ctx) return
+      // While the token box is open, the composer feeds it: a pasted token must not become a chat message.
+      if (awaitingToken(conversation.publish) && text.trim().toLowerCase() !== 'cancel') {
+        publishToken.set(text.trim())
+        dispatch({ type: 'publish-token', last4: text.trim().slice(-4) }, ctx)
+        return
+      }
       if (ctx.user && isAiRequest(conversation, text)) setAiMode(true)
       dispatch({ type: 'user-text', text }, ctx)
     },
@@ -163,6 +174,22 @@ export function useBuilder() {
       },
     },
     startOver: () => ctx && reset(owner ?? null),
+    publish: {
+      projectId,
+      /** Where this site was last published, if it was. */
+      published,
+      setPublished,
+      /** The Publish button. */
+      start: () => ctx && dispatch({ type: 'publish' }, ctx),
+      /** A token from the token box: kept in memory for the run, only its last 4 characters go in the chat. */
+      enterToken: (token: string) => {
+        if (!ctx || !token.trim()) return
+        publishToken.set(token.trim())
+        dispatch({ type: 'publish-token', last4: token.trim().slice(-4) }, ctx)
+      },
+      /** What a run brought back. */
+      report: (event: PublishEvent) => ctx && dispatch(event, ctx),
+    },
   }
 }
 

@@ -4,6 +4,7 @@ import type { SiteDraft } from '@/features/visual-edit'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { type ChatContext, type ChatEvent, type Conversation, initialConversation, reduceConversation } from './lib/conversation'
+import type { Published } from './lib/publish-flow'
 import type { SessionState } from './lib/session-file'
 
 type BuilderState = {
@@ -40,6 +41,9 @@ type BuilderState = {
   /** The version of this session last saved to GitHub (null: never saved from here). */
   synced: Synced | null
   markSynced: (synced: Synced | null) => void
+  /** Where this site was last published (platform and repo), so Publish updates it. Kept in this browser only. */
+  published: Published | null
+  setPublished: (published: Published | null) => void
   /** The "your chat is saved to GitHub" note was shown in the chat. */
   syncNoticeShown: boolean
   markSyncNoticeShown: () => void
@@ -61,7 +65,7 @@ export type Synced = { sha: string | null; repoUrl: string | null; hashes: Recor
 /** What's saved in localStorage. */
 type Persisted = Pick<
   BuilderState,
-  'login' | 'projectId' | 'conversation' | 'fileEdits' | 'aiHistory' | 'syncEnabled' | 'synced' | 'syncNoticeShown'
+  'login' | 'projectId' | 'conversation' | 'fileEdits' | 'aiHistory' | 'syncEnabled' | 'synced' | 'syncNoticeShown' | 'published'
 >
 
 export const useBuilderStore = create<BuilderState>()(
@@ -94,8 +98,20 @@ export const useBuilderStore = create<BuilderState>()(
       markSynced: (synced) => set({ synced }),
       syncNoticeShown: false,
       markSyncNoticeShown: () => set({ syncNoticeShown: true }),
+      published: null,
+      setPublished: (published) => set({ published }),
+      // The same site (same project id) keeps its publish target; another site starts without one.
       importSession: ({ projectId, conversation, fileEdits, aiHistory }, login, synced = null) =>
-        set({ login, projectId, conversation, fileEdits, aiHistory, synced, aiMode: false }),
+        set((state) => ({
+          login,
+          projectId,
+          conversation,
+          fileEdits,
+          aiHistory,
+          synced,
+          aiMode: false,
+          published: state.projectId === projectId ? state.published : null,
+        })),
       claim: (login) => set({ login }),
       reset: (login) =>
         set({
@@ -106,12 +122,13 @@ export const useBuilderStore = create<BuilderState>()(
           aiHistory: {},
           synced: null,
           aiMode: false,
+          published: null,
         }),
     }),
     {
       name: STORAGE_KEY,
       version: 2,
-      partialize: ({ login, projectId, conversation, fileEdits, aiHistory, syncEnabled, synced, syncNoticeShown }): Persisted => ({
+      partialize: ({ login, projectId, conversation, fileEdits, aiHistory, syncEnabled, synced, syncNoticeShown, published }): Persisted => ({
         login,
         projectId,
         conversation,
@@ -120,6 +137,7 @@ export const useBuilderStore = create<BuilderState>()(
         syncEnabled,
         synced,
         syncNoticeShown,
+        published,
       }),
       // v1 had no project id: give the stored site one, once.
       migrate: (stored, version) => {

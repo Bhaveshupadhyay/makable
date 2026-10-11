@@ -6,14 +6,17 @@ import { HeaderActions } from '@/shared/ui/header-slot'
 import { BuilderPreview } from '../components/builder-preview'
 import { ChatPanel } from '../components/chat-panel'
 import { GithubSyncControl } from '../components/github-sync-control'
+import { PublishButton } from '../components/publish-button'
 import { SessionActions } from '../components/session-actions'
 import { useBuilder } from '../hooks/use-builder'
 import { useGithubSync } from '../hooks/use-github-sync'
+import { usePublish } from '../hooks/use-publish'
 
 /** Chat first; once a template is picked, chat and live preview side by side. */
 export function BuilderPage() {
   const builder = useBuilder()
   const sync = useGithubSync(builder)
+  usePublish(builder, sync)
   const wide = useMediaQuery('(min-width: 768px)')
   const { portfolio } = builder.conversation
 
@@ -42,6 +45,7 @@ export function BuilderPage() {
       <HeaderActions>
         {builder.sync.account && <GithubSyncControl sync={sync} />}
         <SessionActions builder={builder} />
+        {portfolio && <PublishButton builder={builder} />}
       </HeaderActions>
       {portfolio ? (
         <Group orientation={wide ? 'horizontal' : 'vertical'}>
