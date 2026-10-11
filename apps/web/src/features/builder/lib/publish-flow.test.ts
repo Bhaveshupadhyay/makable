@@ -172,3 +172,23 @@ test('nothing to publish before a template is picked', () => {
   const fresh = initialConversation()
   expect(run([{ type: 'publish' }], fresh)).toBe(fresh)
 })
+
+test('after a failed publish, other chat is ordinary chat and drops the failed flow', () => {
+  const running = run([{ type: 'publish' }, say('GitHub Pages'), say('Publish')], done)
+  const failed = run([{ type: 'publish-failed', code: 'internal_error', message: 'Boom' }], running)
+  expect(failed.publish?.stage).toBe('failed')
+
+  // An AI request opens AI mode (useBuilder asks isAiRequest first) and the failed flow is gone.
+  expect(isAiRequest(failed, 'make the header blue')).toBe(true)
+  const moved = run([say('make the header blue')], failed)
+  expect(moved.publish).toBeUndefined()
+  expect(moved.messages.at(-2)!.text).toBe('make the header blue')
+
+  // Its own replies and publish requests still answer it.
+  expect(isAiRequest(failed, 'Try again')).toBe(false)
+  expect(run([say('Try again')], failed).publish?.stage).toBe('running')
+  expect(run([say('publish')], failed).publish?.stage).toBe('running')
+
+  const reconnect = run([{ type: 'publish-failed', code: 'github_reconnect', message: 'Connect again.' }], running)
+  expect(run([say('Change template')], reconnect).publish).toBeUndefined()
+})

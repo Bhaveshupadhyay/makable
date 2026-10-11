@@ -3,7 +3,8 @@ import type { GithubData } from '../api/github'
 import { applyGithubData } from './github-content'
 import { isSkip, parseEmail, parseGithubLogin, parseLinks } from './parse'
 import {
-  awaitingPublishAnswer,
+  dropStalePublish,
+  isPublishAnswer,
   PUBLISH,
   PUBLISH_REQUEST,
   type PublishContext,
@@ -202,7 +203,7 @@ function requestAiEdit(state: Conversation, ctx: ChatContext, text: string): Con
 export function isAiRequest(state: Conversation, text: string): boolean {
   const t = text.trim()
   if (!t || !state.portfolio || state.step === 'github-loading') return false
-  if (awaitingPublishAnswer(state.publish) || PUBLISH_REQUEST.test(t)) return false
+  if (isPublishAnswer(state.publish, t) || PUBLISH_REQUEST.test(t)) return false
   return t.toLowerCase() === AI_EDIT.toLowerCase() || (state.step === 'done' && !CHANGE_TEMPLATE.test(t))
 }
 
@@ -303,6 +304,9 @@ export function reduceConversation(state: Conversation, event: ChatEvent, ctx: C
       if (!text || state.step === 'github-loading') return state
       const answer = publishText(state, text, publishContext(state, ctx))
       if (answer) return answer
+      // Other chat after a failed publish moves on from it.
+      const moved = dropStalePublish(state)
+      if (moved !== state) return reduceConversation(moved, event, ctx)
       if (state.portfolio && PUBLISH_REQUEST.test(text)) return startPublish(state, publishContext(state, ctx), text)
       if (state.portfolio && text.toLowerCase() === AI_EDIT.toLowerCase()) return requestAiEdit(state, ctx, AI_EDIT)
       const s = { ...state, messages: [...state.messages, user(text)] }

@@ -106,6 +106,22 @@ export function awaitingPublishAnswer(flow: PublishFlow | undefined): boolean {
   return !!flow && flow.stage !== 'running' && flow.stage !== 'deploying'
 }
 
+/**
+ * Whether chat text answers the publish flow. Its questions take any text, but after a failure (or a request to
+ * reconnect) only its own replies and publish requests do: anything else is ordinary chat, e.g. an AI request.
+ */
+export function isPublishAnswer(flow: PublishFlow | undefined, text: string): boolean {
+  if (!awaitingPublishAnswer(flow)) return false
+  if (flow?.stage !== 'failed' && flow?.stage !== 'reconnect') return true
+  const t = text.trim().toLowerCase()
+  return [TRY_AGAIN, CANCEL, OTHER_PLATFORM, PUBLISH_ELSEWHERE].some((r) => r.toLowerCase() === t) || PUBLISH_REQUEST.test(text.trim())
+}
+
+/** The conversation without a failed publish that other chat moved on from. */
+export function dropStalePublish(state: Conversation): Conversation {
+  return state.publish?.stage === 'failed' || state.publish?.stage === 'reconnect' ? { ...state, publish: undefined } : state
+}
+
 /** Whether chat text should go to the token box instead of the chat (so a token never enters the conversation). */
 export function awaitingToken(flow: PublishFlow | undefined): boolean {
   return flow?.stage === 'token'
@@ -185,7 +201,7 @@ function askToken(state: Conversation, flow: PublishFlow, lead = ''): Conversati
 /** Chat text while the publish flow waits for an answer. Null when the text isn't for it. */
 export function publishText(state: Conversation, text: string, ctx: PublishContext): Conversation | null {
   const flow = state.publish
-  if (!flow || !awaitingPublishAnswer(flow)) return null
+  if (!flow || !isPublishAnswer(flow, text)) return null
   const is = (reply: string) => text.toLowerCase() === reply.toLowerCase()
   const s = { ...state, messages: [...state.messages, user(text)] }
   if (is(CANCEL)) return say(s, undefined, "OK, I won't publish for now.", ctx.resume)
