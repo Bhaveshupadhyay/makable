@@ -72,7 +72,7 @@ export function usePublish(builder: Builder, sync: Pick<GithubSync, 'flush'>) {
 
 async function execute(flow: PublishFlow, get: () => Deps): Promise<void> {
   const report: Builder['publish']['report'] = (event) => get().builder.publish.report(event)
-  const { projectId, setPublished } = get().builder.publish
+  const { projectId, published, setPublished } = get().builder.publish
   const token = flow.paste ? publishToken.get() : null
   if (flow.paste && !token) return void report({ type: 'publish-failed', code: 'token_lost', message: '' })
   const credentials = token ? { token, ...(flow.accountId ? { accountId: flow.accountId } : {}) } : undefined
@@ -80,6 +80,11 @@ async function execute(flow: PublishFlow, get: () => Deps): Promise<void> {
     if (flow.action === 'deploy') {
       const { actionsUrl, startedAt } = await deploySite(projectId, { repoName: flow.repoName ?? '', credentials })
       publishToken.clear()
+      // After a publish whose deploy didn't start, the repo wasn't remembered yet: Publish should update it next time.
+      if (flow.target && flow.repoName) {
+        const same = published?.target === flow.target && published.repoName === flow.repoName
+        setPublished({ target: flow.target, repoName: flow.repoName, siteUrl: same ? published.siteUrl : null })
+      }
       return void report({ type: 'deploy-started', actionsUrl, since: startedAt })
     }
     // Publishing reads the site from the user's workspace repo: save it there first.

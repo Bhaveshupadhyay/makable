@@ -207,3 +207,12 @@ test("a deploy GitHub didn't start offers to start it again", () => {
   expect(last(stuck).replies).toEqual(['Deploy now', 'Cancel'])
   expect(run([say('Deploy now')], stuck).publish).toMatchObject({ stage: 'running', action: 'deploy', repoName: 'octocat.github.io' })
 })
+
+test("without the repo's name, a deploy GitHub didn't start can only be tried again", () => {
+  const running = run([{ type: 'publish' }, say('GitHub Pages'), say('Publish')], done)
+
+  const stuck = run([{ type: 'publish-failed', code: 'publish_deploy_not_started', message: 'Not started.' }], running)
+
+  expect(last(stuck).replies).toEqual(['Try again', 'Cancel'])
+  expect(stuck.publish).toMatchObject({ stage: 'failed' })
+})

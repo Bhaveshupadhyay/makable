@@ -315,7 +315,7 @@ function published(state: Conversation, result: PublishResult, ctx: PublishConte
           stage: 'deploying',
           target: result.target,
           repoName,
-          since: result.deployStartedAt ?? undefined,
+          since: result.deployStartedAt,
           actionsUrl: result.actionsUrl,
           siteUrl: result.siteUrl,
         },
@@ -361,9 +361,13 @@ function failed(state: Conversation, flow: PublishFlow, { code, message, details
         `The repo doesn't have ${list(d.missing ?? [])} yet. Add ${(d.missing?.length ?? 0) > 1 ? 'them' : 'it'} here: ${d.secretsUrl}. Then tell me to deploy.`,
         [DEPLOY_NOW, PASTE_INSTEAD, CANCEL],
       )
-    case 'publish_deploy_not_started':
-      // The code is on GitHub; only starting the deploy failed.
-      return say(state, { ...flow, stage: 'secrets', action: 'deploy', paste: false, repoName: d.repoName ?? flow.repoName }, message, [DEPLOY_NOW, CANCEL])
+    case 'publish_deploy_not_started': {
+      // The code is on GitHub; only starting the deploy failed. "Deploy now" needs to know which repo.
+      const repoName = d.repoName ?? flow.repoName
+      return repoName
+        ? say(state, { ...flow, stage: 'secrets', action: 'deploy', paste: false, repoName }, message, [DEPLOY_NOW, CANCEL])
+        : say(state, { ...flow, stage: 'failed' }, message, [TRY_AGAIN, CANCEL])
+    }
     case 'token_lost':
       return askToken(state, flow, "I don't keep tokens after the page reloads. ")
     case 'github_missing_scope':

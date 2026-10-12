@@ -28,16 +28,17 @@ export type PublishResult = {
   commitSha: string
   /** Whether this publish committed anything. Either way it deploys what's on GitHub. */
   changed: boolean
-  /** `started`: deploying. `waiting_for_secrets`: not started; add `missingSecrets` on GitHub first. */
-  deploy: 'started' | 'waiting_for_secrets'
-  /** When the deploy started (UTC, to the second): pass it to `getPublishStatus` to follow this deploy's run. */
-  deployStartedAt: string | null
   siteUrl: string | null
   projectName: string | null
   missingSecrets: string[]
   secretsUrl: string
   actionsUrl: string
-}
+} & (
+  // `started`: deploying, since `deployStartedAt` (UTC, to the second; pass it to `getPublishStatus` to follow this
+  // deploy's run). `waiting_for_secrets`: not started; add `missingSecrets` on GitHub first.
+  | { deploy: 'started'; deployStartedAt: string }
+  | { deploy: 'waiting_for_secrets'; deployStartedAt: null }
+)
 
 export type WorkflowRun = { status: string; conclusion: string | null; headSha: string; htmlUrl: string; createdAt: string }
 export type PublishStatus = { target: PublishTarget; siteUrl: string | null; run: WorkflowRun | null }
