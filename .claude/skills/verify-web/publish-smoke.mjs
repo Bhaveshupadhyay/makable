@@ -25,6 +25,7 @@ const backend = {
   publishAnswers: [], // scripted answers for POST /publish, in order
   deployAnswers: [],
   statusAnswers: [], // scripted runs for GET /status; the last one repeats
+  statusSince: [], // the `since` each status check sent
 }
 const ok = (data) => ({ status: 200, body: { success: true, data } })
 const fail = (status, code, message, details) => ({ status, body: { success: false, error: { code, message, details } } })
@@ -34,7 +35,9 @@ const result = (over) => ({
   repoUrl: REPO,
   branch: 'main',
   commitSha: sha(0xc0ffee),
+  changed: true,
   deploy: 'started',
+  deployStartedAt: '2026-10-11T13:45:07Z',
   siteUrl: 'https://octocat-portfolio.vercel.app',
   projectName: 'octocat-portfolio',
   missingSecrets: [],
@@ -50,7 +53,7 @@ const runOf = (status, conclusion, headSha = sha(0xc0ffee)) => ({
   createdAt: new Date().toISOString(),
 })
 
-function answer(method, path, body) {
+function answer(method, path, body, query) {
   if (path === '/auth/session') return ok({ user: USER })
   if (path === '/workspace/sessions/latest') return fail(404, 'workspace_session_not_found', 'No saved session on GitHub yet')
   if (method === 'PUT' && path.startsWith('/workspace/sessions/')) {
@@ -67,6 +70,7 @@ function answer(method, path, body) {
     return backend.deployAnswers.shift() ?? fail(500, 'internal_error', 'unscripted deploy')
   }
   if (method === 'GET' && path.includes('/status')) {
+    backend.statusSince.push(query.get('since'))
     const run = backend.statusAnswers.length > 1 ? backend.statusAnswers.shift() : backend.statusAnswers[0]
     return ok({ target: 'vercel', siteUrl: null, run: run ?? null })
   }
@@ -83,7 +87,7 @@ await page.route('**/api/v1/**', async (route) => {
   const request = route.request()
   const url = new URL(request.url())
   const body = request.postData() ? JSON.parse(request.postData()) : null
-  const { status, body: json } = answer(request.method(), url.pathname.replace('/api/v1', ''), body)
+  const { status, body: json } = answer(request.method(), url.pathname.replace('/api/v1', ''), body, url.searchParams)
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(json) })
 })
 
@@ -134,7 +138,8 @@ try {
 
   await assistantSays('Your site is live at https://octocat-portfolio.vercel.app', 30000)
   await shot('publish-live.png')
-  console.log('✓ publish: the deploy is followed until it is live')
+  expect(backend.statusSince.every((since) => since === '2026-10-11T13:45:07Z'), `status checks must follow the deploy's start: ${backend.statusSince}`)
+  console.log("✓ publish: the deploy is followed (by its start time) until it is live")
 
   const stored = await page.evaluate(() => localStorage.getItem('makable:builder') ?? '')
   expect(!stored.includes(TOKEN), 'the token must not be stored in the browser')
@@ -142,26 +147,31 @@ try {
   expect(!(await page.getByText(TOKEN).count()), 'the token must not be shown in the chat')
   console.log('✓ publish: the token is not in the chat, localStorage or the workspace saves')
 
-  // 2. Publishing again: straight to Vercel; a change on GitHub needs the user's OK.
+  // 2. Publishing again: straight to Vercel; a change on GitHub needs the user's OK. With nothing new from the
+  // builder, Publish still deploys (only Publish deploys; pushes don't).
   backend.publishAnswers.push(
     fail(409, 'publish_changed_on_github', 'Changed on GitHub', { headSha: sha(0xbeef), paths: ['src/App.tsx'] }),
-    ok(result({ deploy: 'unchanged' })),
+    ok(result({ changed: false, deployStartedAt: '2026-10-11T14:00:00Z' })),
   )
   await publish.click()
   await assistantSays('Publishing your changes to Vercel')
   await assistantSays('src/App.tsx')
   await reply('Overwrite')
-  await assistantSays('Nothing changed since your last publish')
+  const live = 'Your site is live at https://octocat-portfolio.vercel.app'
+  const liveBefore = await page.getByText(live).count()
+  await assistantSays("so I'm deploying what's on GitHub to Vercel again")
+  await page.getByText(live).nth(liveBefore).waitFor({ timeout: 30000 })
+  expect(backend.statusSince.at(-1) === '2026-10-11T14:00:00Z', `the redeploy must be followed by its own start: ${backend.statusSince.at(-1)}`)
   const [, first, overwrite] = backend.publishes
   expect(!first.credentials && first.target === 'vercel', `republish body: ${JSON.stringify(first)}`)
   expect(overwrite.confirmOverwrite === sha(0xbeef), `overwrite body: ${JSON.stringify(overwrite)}`)
-  console.log('✓ publish: republish goes to the same platform; a change on GitHub asks before overwriting')
+  console.log('✓ publish: republish goes to the same platform, asks before overwriting a change on GitHub, and deploys even with nothing new')
 
   // 3. Another platform, with the secret added on GitHub by the user.
   backend.publishAnswers.push(ok(result({ target: 'netlify', deploy: 'waiting_for_secrets', missingSecrets: ['NETLIFY_AUTH_TOKEN'], siteUrl: 'https://octocat-portfolio.netlify.app' })))
   backend.deployAnswers.push(
     fail(409, 'publish_secrets_missing', 'Add the deploy secrets first.', { missing: ['NETLIFY_AUTH_TOKEN'], secretsUrl: `${REPO}/settings/secrets/actions` }),
-    ok({ repoUrl: REPO, actionsUrl: `${REPO}/actions/workflows/makable-deploy.yml` }),
+    ok({ repoUrl: REPO, actionsUrl: `${REPO}/actions/workflows/makable-deploy.yml`, startedAt: '2026-10-11T14:05:00Z' }),
   )
   backend.statusAnswers.length = 0
   backend.statusAnswers.push(runOf('completed', 'failure', sha(1)))
@@ -176,6 +186,8 @@ try {
   await reply('Deploy now')
   await assistantSays('Deploying now')
   expect(backend.deploys.at(-1).repoName === 'portfolio', `deploy body: ${JSON.stringify(backend.deploys.at(-1))}`)
+  await page.waitForTimeout(6000)
+  expect(backend.statusSince.at(-1) === '2026-10-11T14:05:00Z', `a re-run must be followed by its start: ${backend.statusSince.at(-1)}`)
   await assistantSays("The deploy didn't finish (failure)", 30000)
   await shot('publish-failed.png')
   console.log('✓ publish: secrets added on GitHub, deploy refused until they are there, a failed deploy links its log')

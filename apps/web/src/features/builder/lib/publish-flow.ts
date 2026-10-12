@@ -36,8 +36,7 @@ export type PublishFlow = {
   accounts?: { id: string; name: string }[]
   /** A new id for every run, so each one runs once. */
   runId?: string
-  /** While deploying: the commit being deployed (when known), when it started, and where to watch it. */
-  commitSha?: string
+  /** While deploying: when the deploy started (the backend's time, which finds its run) and where to watch it. */
   since?: string
   actionsUrl?: string
   siteUrl?: string | null
@@ -267,7 +266,7 @@ export function publishOutcome(state: Conversation, event: Exclude<PublishEvent,
     case 'deploy-started':
       return say(
         state,
-        { ...flow, stage: 'deploying', commitSha: undefined, since: event.since, actionsUrl: event.actionsUrl },
+        { ...flow, stage: 'deploying', since: event.since, actionsUrl: event.actionsUrl },
         `Deploying now. I'll tell you when it's live. Follow it here: ${event.actionsUrl}`,
       )
     case 'deploy-finished': {
@@ -295,8 +294,6 @@ function published(state: Conversation, result: PublishResult, ctx: PublishConte
   const { name, tokenUrl } = TARGETS[result.target]
   const repoName = result.repoFullName.split('/')[1]
   switch (result.deploy) {
-    case 'unchanged':
-      return say(state, undefined, `Nothing changed since your last publish. Your site is at ${result.siteUrl ?? result.repoUrl}`, ctx.resume)
     case 'waiting_for_secrets':
       return say(
         state,
@@ -308,18 +305,21 @@ function published(state: Conversation, result: PublishResult, ctx: PublishConte
       )
     case 'started': {
       const firstPages = result.target === 'github-pages' && !ctx.published ? ' The first GitHub Pages deploy can take a few extra minutes.' : ''
+      // Nothing new from the builder: publishing still deploys what's on GitHub (e.g. edits made there).
+      const lead = result.changed
+        ? `Published to ${name}! It's deploying now`
+        : `Nothing new here since your last publish, so I'm deploying what's on GitHub to ${name} again`
       return say(
         state,
         {
           stage: 'deploying',
           target: result.target,
           repoName,
-          commitSha: result.commitSha,
-          since: new Date().toISOString(),
+          since: result.deployStartedAt,
           actionsUrl: result.actionsUrl,
           siteUrl: result.siteUrl,
         },
-        `Published to ${name}! It's deploying now, which usually takes a minute or two. I'll tell you when it's live.${firstPages}\n` +
+        `${lead}, which usually takes a minute or two. I'll tell you when it's live.${firstPages}\n` +
           `Site: ${result.siteUrl}\nCode: ${result.repoUrl}\nDeploy log: ${result.actionsUrl}`,
       )
     }
@@ -328,7 +328,14 @@ function published(state: Conversation, result: PublishResult, ctx: PublishConte
 
 function failed(state: Conversation, flow: PublishFlow, { code, message, details }: { code: string | undefined; message: string; details?: unknown }, ctx: PublishContext): Conversation {
   const target = flow.target ? TARGETS[flow.target].name : 'the platform'
-  const d = (details ?? {}) as { headSha?: string; paths?: string[]; accounts?: { id: string; name: string }[]; missing?: string[]; secretsUrl?: string }
+  const d = (details ?? {}) as {
+    headSha?: string
+    paths?: string[]
+    accounts?: { id: string; name: string }[]
+    missing?: string[]
+    secretsUrl?: string
+    repoName?: string
+  }
   switch (code) {
     case 'workspace_conflict':
       return say(state, undefined, 'This chat was also changed on another device. Choose which version to keep from the cloud button at the top, then publish again.', ctx.resume)
@@ -354,6 +361,13 @@ function failed(state: Conversation, flow: PublishFlow, { code, message, details
         `The repo doesn't have ${list(d.missing ?? [])} yet. Add ${(d.missing?.length ?? 0) > 1 ? 'them' : 'it'} here: ${d.secretsUrl}. Then tell me to deploy.`,
         [DEPLOY_NOW, PASTE_INSTEAD, CANCEL],
       )
+    case 'publish_deploy_not_started': {
+      // The code is on GitHub; only starting the deploy failed. "Deploy now" needs to know which repo.
+      const repoName = d.repoName ?? flow.repoName
+      return repoName
+        ? say(state, { ...flow, stage: 'secrets', action: 'deploy', paste: false, repoName }, message, [DEPLOY_NOW, CANCEL])
+        : say(state, { ...flow, stage: 'failed' }, message, [TRY_AGAIN, CANCEL])
+    }
     case 'token_lost':
       return askToken(state, flow, "I don't keep tokens after the page reloads. ")
     case 'github_missing_scope':

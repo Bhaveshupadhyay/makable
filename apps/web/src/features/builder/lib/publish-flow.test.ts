@@ -22,7 +22,9 @@ const result = (over: Partial<PublishResult> = {}): PublishResult => ({
   repoUrl: 'https://github.com/octocat/portfolio',
   branch: 'main',
   commitSha: 'c'.repeat(40),
+  changed: true,
   deploy: 'started',
+  deployStartedAt: '2026-10-11T13:45:07Z',
   siteUrl: 'https://octocat-portfolio.vercel.app',
   projectName: 'octocat-portfolio',
   missingSecrets: [],
@@ -92,7 +94,8 @@ test('adding the secrets on GitHub: publish, then deploy when told', () => {
 test('a started deploy is followed until it is live, or says why it failed', () => {
   const running = run([{ type: 'publish' }, say('Vercel'), say("I'll add it on GitHub")], done)
   const deploying = run([{ type: 'publish-done', result: result() }], running)
-  expect(deploying.publish).toMatchObject({ stage: 'deploying', commitSha: 'c'.repeat(40), siteUrl: 'https://octocat-portfolio.vercel.app' })
+  // The deploy is followed by its start time (the backend's), since a re-run has the same commit as the last run.
+  expect(deploying.publish).toMatchObject({ stage: 'deploying', since: '2026-10-11T13:45:07Z', siteUrl: 'https://octocat-portfolio.vercel.app' })
   expect(last(deploying).text).toContain('https://octocat-portfolio.vercel.app')
 
   const run_ = { status: 'completed', headSha: 'c'.repeat(40), htmlUrl: 'https://github.com/run/1', createdAt: '2026-10-11T10:00:00Z' }
@@ -113,9 +116,10 @@ test('publishing again goes straight to the same platform and repo', () => {
 
   expect(run([say('Publish somewhere else')], done, { ...signedIn, published }).publish?.stage).toBe('target')
 
-  const unchanged = run([{ type: 'publish-done', result: result({ deploy: 'unchanged' }) }], again, { ...signedIn, published })
-  expect(unchanged.publish).toBeUndefined()
-  expect(last(unchanged).text).toContain('Nothing changed')
+  // Nothing new from the builder still deploys (what's on GitHub): only Publish deploys, never a push.
+  const redeploy = run([{ type: 'publish-done', result: result({ changed: false }) }], again, { ...signedIn, published })
+  expect(redeploy.publish?.stage).toBe('deploying')
+  expect(last(redeploy).text).toContain("deploying what's on GitHub")
 })
 
 test('conflicts and taken names are answered in the chat', () => {
@@ -191,4 +195,24 @@ test('after a failed publish, other chat is ordinary chat and drops the failed f
 
   const reconnect = run([{ type: 'publish-failed', code: 'github_reconnect', message: 'Connect again.' }], running)
   expect(run([say('Change template')], reconnect).publish).toBeUndefined()
+})
+
+test("a deploy GitHub didn't start offers to start it again", () => {
+  const running = run([{ type: 'publish' }, say('GitHub Pages'), say('Publish')], done)
+  const message = "Your site's code is on GitHub, but GitHub didn't start the deploy. Try deploying again in a moment."
+
+  const stuck = run([{ type: 'publish-failed', code: 'publish_deploy_not_started', message, details: { repoName: 'octocat.github.io' } }], running)
+
+  expect(last(stuck).text).toBe(message)
+  expect(last(stuck).replies).toEqual(['Deploy now', 'Cancel'])
+  expect(run([say('Deploy now')], stuck).publish).toMatchObject({ stage: 'running', action: 'deploy', repoName: 'octocat.github.io' })
+})
+
+test("without the repo's name, a deploy GitHub didn't start can only be tried again", () => {
+  const running = run([{ type: 'publish' }, say('GitHub Pages'), say('Publish')], done)
+
+  const stuck = run([{ type: 'publish-failed', code: 'publish_deploy_not_started', message: 'Not started.' }], running)
+
+  expect(last(stuck).replies).toEqual(['Try again', 'Cancel'])
+  expect(stuck.publish).toMatchObject({ stage: 'failed' })
 })

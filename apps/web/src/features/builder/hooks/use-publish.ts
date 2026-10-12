@@ -9,8 +9,6 @@ import type { GithubSync } from './use-github-sync'
 /** How often to ask how the deploy is going, and how long to wait for it. */
 export const POLL_MS = 5_000
 export const DEPLOY_TIMEOUT_MS = 10 * 60_000
-/** A deploy run counts as ours if it started at most this long before we asked for it (clocks differ). */
-const CLOCK_SLACK_MS = 30_000
 
 // Errors the user fixes by answering in the chat (pick an account, another name, overwrite): the pasted token is
 // kept for the next try. Anything else drops it.
@@ -44,21 +42,21 @@ export function usePublish(builder: Builder, sync: Pick<GithubSync, 'flush'>) {
 
   const deploying = flow?.stage === 'deploying' ? flow : undefined
   const repoName = deploying?.repoName
-  const commitSha = deploying?.commitSha
   const since = deploying?.since
   const projectId = builder.publish.projectId
   useEffect(() => {
     if (!repoName) return
-    const from = (since && Date.parse(since)) || Date.now()
+    // How long it's been deploying, on this browser's clock (only for giving up).
+    const from = Date.now()
     let stopped = false
     let timer: ReturnType<typeof setTimeout>
     const tick = async () => {
       if (stopped) return
       if (Date.now() - from > DEPLOY_TIMEOUT_MS) return void deps.current.builder.publish.report({ type: 'deploy-finished', run: null })
       try {
-        const { run } = await getPublishStatus(projectId, repoName)
-        const ours = run && (commitSha ? run.headSha === commitSha : Date.parse(run.createdAt) >= from - CLOCK_SLACK_MS)
-        if (!stopped && ours && run.status === 'completed') return void deps.current.builder.publish.report({ type: 'deploy-finished', run })
+        // The backend only returns a run started since this deploy did (a re-run has the same commit as the last one).
+        const { run } = await getPublishStatus(projectId, repoName, since)
+        if (!stopped && run?.status === 'completed') return void deps.current.builder.publish.report({ type: 'deploy-finished', run })
       } catch {
         // A failed check isn't a failed deploy: ask again next time.
       }
@@ -69,21 +67,25 @@ export function usePublish(builder: Builder, sync: Pick<GithubSync, 'flush'>) {
       stopped = true
       clearTimeout(timer)
     }
-  }, [projectId, repoName, commitSha, since])
+  }, [projectId, repoName, since])
 }
 
 async function execute(flow: PublishFlow, get: () => Deps): Promise<void> {
   const report: Builder['publish']['report'] = (event) => get().builder.publish.report(event)
-  const { projectId, setPublished } = get().builder.publish
+  const { projectId, published, setPublished } = get().builder.publish
   const token = flow.paste ? publishToken.get() : null
   if (flow.paste && !token) return void report({ type: 'publish-failed', code: 'token_lost', message: '' })
   const credentials = token ? { token, ...(flow.accountId ? { accountId: flow.accountId } : {}) } : undefined
   try {
     if (flow.action === 'deploy') {
-      const since = new Date().toISOString()
-      const { actionsUrl } = await deploySite(projectId, { repoName: flow.repoName ?? '', credentials })
+      const { actionsUrl, startedAt } = await deploySite(projectId, { repoName: flow.repoName ?? '', credentials })
       publishToken.clear()
-      return void report({ type: 'deploy-started', actionsUrl, since })
+      // After a publish whose deploy didn't start, the repo wasn't remembered yet: Publish should update it next time.
+      if (flow.target && flow.repoName) {
+        const same = published?.target === flow.target && published.repoName === flow.repoName
+        setPublished({ target: flow.target, repoName: flow.repoName, siteUrl: same ? published.siteUrl : null })
+      }
+      return void report({ type: 'deploy-started', actionsUrl, since: startedAt })
     }
     // Publishing reads the site from the user's workspace repo: save it there first.
     const stateSha = await get().sync.flush()
