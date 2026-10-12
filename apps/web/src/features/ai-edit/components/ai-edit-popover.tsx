@@ -1,6 +1,7 @@
 import { type AiEditTarget, MAX_INSTRUCTION } from '@makable/shared'
 import { ArrowUp, Crosshair, LoaderCircle, Square, X } from 'lucide-react'
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react'
+import { ModelPicker } from '@/features/ai-models'
 import { useElementSize } from '@/shared/hooks/use-element-size'
 import { Button } from '@/shared/ui/button'
 import type { AiEdit } from '../hooks/use-ai-edit'
@@ -118,6 +119,9 @@ export function AiEditPopover({ ai, target, anchor, onClear }: AiEditPopoverProp
                 <ArrowUp />
               </Button>
             )}
+          </div>
+          <div className="flex min-w-0 items-center">
+            <ModelPicker disabled={ai.pending} />
           </div>
           {ai.pending && (
             <p role="status" className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">

@@ -1,4 +1,5 @@
-import { ChevronDown, LogOut } from 'lucide-react'
+import { ChevronDown, LogOut, Settings2 } from 'lucide-react'
+import { Link } from 'react-router'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,7 +10,7 @@ import {
 } from '@/shared/ui/dropdown-menu'
 import { useLogout, useSession } from '../hooks/use-session'
 
-/** The signed-in user's avatar; it opens a menu with the account and Sign out. Hidden for guests. */
+/** The signed-in user's avatar; it opens a menu with the account, AI model settings and Sign out. Hidden for guests. */
 export function UserMenu() {
   const { data: user } = useSession()
   const logout = useLogout()
@@ -32,6 +33,12 @@ export function UserMenu() {
           <p className="truncate text-xs text-muted-foreground">@{user.login}</p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/settings">
+            <Settings2 />
+            AI models
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem disabled={logout.isPending} onSelect={() => logout.mutate()}>
           <LogOut />
           Sign out
