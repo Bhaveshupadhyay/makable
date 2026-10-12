@@ -1,7 +1,8 @@
 import { type AiEditTarget, MAX_INSTRUCTION } from '@makable/shared'
 import { ArrowUp, Crosshair, LoaderCircle, Square, X } from 'lucide-react'
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react'
-import { ModelPicker } from '@/features/ai-models'
+import { Link } from 'react-router'
+import { AddKeyPrompt, ModelPicker, useModelStatus } from '@/features/ai-models'
 import { useElementSize } from '@/shared/hooks/use-element-size'
 import { Button } from '@/shared/ui/button'
 import type { AiEdit } from '../hooks/use-ai-edit'
@@ -26,6 +27,7 @@ export function AiEditPopover({ ai, target, anchor, onClear }: AiEditPopoverProp
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const bounds = useElementSize(overlayRef)
   const [text, setText] = useState('')
+  const status = useModelStatus()
   // The latest selection, for the send callback: the user may pick another element while it's pending.
   const targetRef = useRef(target)
   useEffect(() => {
@@ -83,46 +85,52 @@ export function AiEditPopover({ ai, target, anchor, onClear }: AiEditPopoverProp
               <X className="size-3.5" />
             </button>
           </div>
-          <div className="flex items-end gap-2 rounded-lg border p-1 focus-within:ring-[3px] focus-within:ring-ring/30">
-            <textarea
-              ref={inputRef}
-              aria-label="Ask AI to make changes"
-              rows={1}
-              value={text}
-              readOnly={ai.pending}
-              maxLength={MAX_INSTRUCTION}
-              placeholder="Ask AI to make changes"
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={onKeyDown}
-              className="field-sizing-content max-h-28 min-h-8 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
-            />
-            {/* Separate keys: if React reused the element, Stop would turn into a submit button
-                mid-click and send the request again. */}
-            {ai.pending ? (
-              <Button
-                key="stop"
-                type="button"
-                size="icon"
-                variant="outline"
-                aria-label="Stop AI"
-                title="Stop"
-                onClick={(e) => {
-                  e.preventDefault()
-                  ai.stop()
-                }}
-                className="size-8 rounded-full"
-              >
-                <Square className="fill-current" />
-              </Button>
-            ) : (
-              <Button key="send" type="submit" size="icon" aria-label="Send to AI" disabled={!text.trim()} className="size-8 rounded-full">
-                <ArrowUp />
-              </Button>
-            )}
-          </div>
-          <div className="flex min-w-0 items-center">
-            <ModelPicker disabled={ai.pending} />
-          </div>
+          {status !== 'ready' && !ai.pending ? (
+            <AddKeyPrompt status={status} className="px-1 pb-1" />
+          ) : (
+            <>
+              <div className="flex items-end gap-2 rounded-lg border p-1 focus-within:ring-[3px] focus-within:ring-ring/30">
+                <textarea
+                  ref={inputRef}
+                  aria-label="Ask AI to make changes"
+                  rows={1}
+                  value={text}
+                  readOnly={ai.pending}
+                  maxLength={MAX_INSTRUCTION}
+                  placeholder="Ask AI to make changes"
+                  onChange={(e) => setText(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  className="field-sizing-content max-h-28 min-h-8 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
+                />
+                {/* Separate keys: if React reused the element, Stop would turn into a submit button
+                    mid-click and send the request again. */}
+                {ai.pending ? (
+                  <Button
+                    key="stop"
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    aria-label="Stop AI"
+                    title="Stop"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      ai.stop()
+                    }}
+                    className="size-8 rounded-full"
+                  >
+                    <Square className="fill-current" />
+                  </Button>
+                ) : (
+                  <Button key="send" type="submit" size="icon" aria-label="Send to AI" disabled={!text.trim()} className="size-8 rounded-full">
+                    <ArrowUp />
+                  </Button>
+                )}
+              </div>
+              <div className="flex min-w-0 items-center">
+                <ModelPicker disabled={ai.pending} />
+              </div>
+            </>
+          )}
           {ai.pending && (
             <p role="status" className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
               <LoaderCircle className="size-3.5 animate-spin" />
@@ -136,7 +144,12 @@ export function AiEditPopover({ ai, target, anchor, onClear }: AiEditPopoverProp
           )}
           {ai.error && (
             <p role="alert" className="px-1 text-xs text-destructive">
-              {ai.error}
+              {ai.error}{' '}
+              {ai.errorInSettings && (
+                <Link to="/settings" className="font-medium underline underline-offset-2">
+                  Manage AI models
+                </Link>
+              )}
             </p>
           )}
         </form>
@@ -145,8 +158,10 @@ export function AiEditPopover({ ai, target, anchor, onClear }: AiEditPopoverProp
   )
 }
 
-/** Banner while AI mode is on and nothing is selected yet. */
+/** Banner while AI mode is on and nothing is selected yet. Asks for an API key first when there's no model to use. */
 export function AiEditHint() {
+  const status = useModelStatus()
+  if (status !== 'ready') return <AddKeyPrompt status={status} className="border-b bg-violet-500/5 px-4 py-2" />
   return (
     <p role="status" className="border-b bg-violet-500/5 px-4 py-2 text-xs text-muted-foreground">
       Click anything in the preview to change it with AI. <kbd className="font-sans font-medium">Esc</kbd> clears the selection.

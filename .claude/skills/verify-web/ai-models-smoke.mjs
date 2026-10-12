@@ -21,11 +21,12 @@ const PROVIDERS = [
 ]
 
 // --- The fake backend ---
-const backend = { key: null, keyBodies: [], edits: [], editAnswers: [] }
+// `makableModel: false` is a backend without AI_BASE_URL: users need their own key.
+const backend = { makableModel: false, key: null, keyBodies: [], edits: [], editAnswers: [] }
 const ok = (data) => ({ status: 200, body: { success: true, data } })
 const fail = (status, code, message) => ({ status, body: { success: false, error: { code, message } } })
 const options = () => [
-  { keyId: null, provider: null, model: 'auto' },
+  ...(backend.makableModel ? [{ keyId: null, provider: null, model: 'auto' }] : []),
   ...(backend.key?.status === 'valid' ? backend.key.models.map((model) => ({ keyId: KEY_ID, provider: 'openai', model })) : []),
 ]
 
@@ -76,13 +77,26 @@ const expect = (condition, message) => {
 }
 
 try {
-  // 1. Settings, from the account menu.
+  // 1. No makable model and no key yet: AI mode asks for a key up front and leads to Settings.
   await page.goto(BASE_URL)
-  await page.getByRole('button', { name: 'Account menu' }).click()
-  await page.getByRole('menuitem', { name: 'AI models' }).click()
+  await page.getByRole('button', { name: 'Account menu' }).waitFor()
+  const startOver = page.getByRole('button', { name: 'Start over' })
+  if (await startOver.isEnabled()) await startOver.click()
+  await page.getByRole('button', { name: 'I want a portfolio' }).click()
+  await page.getByRole('button', { name: 'Terminal template' }).last().click()
+  const frame = page.frameLocator('iframe[title="Portfolio preview"]')
+  await frame.locator('[data-theme="terminal"]').waitFor({ timeout: 60000 })
+  await page.getByRole('button', { name: 'Edit with AI' }).last().click()
+  await page.getByText('AI edits run on your own API key').waitFor()
+  await frame.locator('[data-content]').first().click()
+  const popover = page.getByRole('form', { name: 'Ask AI' })
+  await popover.getByRole('link', { name: 'Add an API key' }).waitFor()
+  expect((await page.getByRole('textbox', { name: 'Ask AI to make changes' }).count()) === 0, 'no text box without a model')
+  await shot('ai-needs-key.png')
+  await popover.getByRole('link', { name: 'Add an API key' }).click()
   await page.getByRole('heading', { name: 'AI models' }).waitFor()
   await page.getByText('No keys yet').waitFor()
-  console.log('✓ settings: opened from the account menu, no keys yet')
+  console.log('✓ no model: AI mode asks for an API key (hint and box) and links to Settings')
 
   const keyInput = page.getByLabel('API key', { exact: true })
   await keyInput.fill('sk-wrong')
@@ -101,6 +115,8 @@ try {
   await models.getByLabel('o4-mini').check()
   await page.getByText('2 of 20 shown in the chat').waitFor()
   await shot('ai-settings-choose.png')
+  // From here on the backend has its own model too, to check the menu with both.
+  backend.makableModel = true
   await page.getByRole('button', { name: 'Save models' }).click()
   await page.getByText('In the chat: gpt-5, o4-mini').waitFor()
   await page.getByText('••••7f3a').waitFor()
@@ -112,13 +128,8 @@ try {
 
   // 2. The builder's AI box offers the models and sends the pick.
   await page.getByRole('link', { name: 'Back to the builder' }).click()
-  const startOver = page.getByRole('button', { name: 'Start over' })
-  if (await startOver.isEnabled()) await startOver.click()
-  await page.getByRole('button', { name: 'I want a portfolio' }).click()
-  await page.getByRole('button', { name: 'Terminal template' }).last().click()
-  const frame = page.frameLocator('iframe[title="Portfolio preview"]')
   await frame.locator('[data-theme="terminal"]').waitFor({ timeout: 60000 })
-  await page.getByRole('button', { name: 'Edit with AI' }).last().click()
+  // AI mode is still on from before Settings, now with a model to use.
   await page.getByText('Click anything in the preview to change it with AI').waitFor()
   await frame.locator('[data-content]').first().click()
   const aiBox = page.getByRole('textbox', { name: 'Ask AI to make changes' })
@@ -155,8 +166,9 @@ try {
   await aiBox.fill('Make it bold')
   await aiBox.press('Enter')
   await page.getByText("didn't accept your API key").waitFor()
+  await popover.getByRole('link', { name: 'Manage AI models' }).waitFor()
   await page.getByRole('button', { name: 'AI model: makable default' }).waitFor()
-  console.log('✓ AI box: the pick is remembered; a refused key falls back to makable default')
+  console.log('✓ AI box: the pick is remembered; a refused key links to Settings and falls back to makable default')
 
   expect(errors.length === 0, `page errors:\n${errors.join('\n')}`)
   console.log('All AI model checks passed')

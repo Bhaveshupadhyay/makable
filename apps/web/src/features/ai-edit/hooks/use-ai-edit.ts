@@ -10,7 +10,9 @@ import { buildEditRequest, targetLabel } from '../lib/build-edit-request'
 
 const MUTATION_KEY = ['ai-edit']
 // Errors that mean the picked model can't be used any more.
-const MODEL_ERRORS = new Set(['ai_key_invalid', 'ai_key_not_found', 'ai_model_not_enabled'])
+const MODEL_ERRORS = new Set(['ai_key_invalid', 'ai_key_not_found', 'ai_model_not_enabled', 'ai_model_required'])
+// Errors the user fixes in Settings → AI models (another key or model), so the box links there.
+const SETTINGS_ERRORS = new Set([...MODEL_ERRORS, 'ai_unavailable', 'ai_rate_limited'])
 
 /**
  * True while an AI request is pending. Usable before `useAiEdit` in the same component, so other
@@ -150,6 +152,8 @@ export function useAiEdit({ template, files, draft, onApply, onUndo, previewErro
     stop,
     pending: mutation.isPending,
     error: mutation.error && errorMessage(mutation.error),
+    /** The error is about the model or key, so Settings → AI models can fix it. */
+    errorInSettings: mutation.error instanceof ApiError && SETTINGS_ERRORS.has(mutation.error.code ?? ''),
     invalid,
   }
 }

@@ -1,5 +1,5 @@
 import type { AiModelChoice } from '@makable/shared'
-import type { AiModelOption } from '../types'
+import type { AiKey, AiModelOption } from '../types'
 
 /** The most models a key can show in the chat's menu (makable-backend `MAX_ENABLED_MODELS`). */
 export const MAX_ENABLED_MODELS = 20
@@ -42,4 +42,22 @@ export function toggleModel(enabled: string[], model: string): string[] {
 export function filterModels(models: string[], query: string): string[] {
   const q = query.trim().toLowerCase()
   return q ? models.filter((m) => m.toLowerCase().includes(q)) : models
+}
+
+/**
+ * Whether AI edits have a model to use. `no-key`: no key yet; `no-models`: a working key, but no model chosen for
+ * the chat; `key-invalid`: every key was refused. Only asked when the menu (`options`) has nothing in it, i.e.
+ * there's no makable model either.
+ */
+export type ModelStatus = 'ready' | 'no-key' | 'no-models' | 'key-invalid'
+
+export function modelStatus(options: AiModelOption[], keys: Pick<AiKey, 'status'>[]): ModelStatus {
+  if (options.length > 0) return 'ready'
+  if (keys.some((k) => k.status === 'valid')) return 'no-models'
+  return keys.length > 0 ? 'key-invalid' : 'no-key'
+}
+
+/** The model a request uses when the user hasn't picked one: makable's, or else their first. */
+export function fallbackOption(options: AiModelOption[]): AiModelOption | null {
+  return options.some((o) => !o.keyId) ? null : (options[0] ?? null)
 }

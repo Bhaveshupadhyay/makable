@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { AiModelOption } from '../types'
-import { filterModels, findPick, groupOptions, MAX_ENABLED_MODELS, toChoice, toggleModel } from './model-options'
+import { fallbackOption, filterModels, findPick, groupOptions, MAX_ENABLED_MODELS, modelStatus, toChoice, toggleModel } from './model-options'
 
 const KEY_A = '6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b'
 const KEY_B = '0b5e2c1d-7a8f-4e3b-9c2d-1e0f3a4b5c6d'
@@ -46,4 +46,17 @@ test('search matches any part of the id, ignoring case', () => {
   const models = ['openai/gpt-5', 'meta-llama/llama-3.3-70b:free', 'anthropic/claude-sonnet-4.5']
   expect(filterModels(models, ' LLAMA ')).toEqual(['meta-llama/llama-3.3-70b:free'])
   expect(filterModels(models, '')).toBe(models)
+})
+
+test('without makable’s model, a request uses the user’s first model, and the status says what’s missing', () => {
+  const own = options.slice(1)
+  expect(fallbackOption(options)).toBeNull()
+  expect(fallbackOption(own)).toBe(own[0])
+  expect(fallbackOption([])).toBeNull()
+
+  expect(modelStatus(options, [])).toBe('ready')
+  expect(modelStatus([], [])).toBe('no-key')
+  expect(modelStatus([], [{ status: 'valid' }])).toBe('no-models')
+  expect(modelStatus([], [{ status: 'invalid' }])).toBe('key-invalid')
+  expect(modelStatus([], [{ status: 'invalid' }, { status: 'valid' }])).toBe('no-models')
 })
