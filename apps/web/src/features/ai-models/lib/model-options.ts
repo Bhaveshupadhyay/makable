@@ -4,13 +4,24 @@ import type { AiKey, AiModelOption } from '../types'
 /** The most models a key can show in the chat's menu (makable-backend `MAX_ENABLED_MODELS`). */
 export const MAX_ENABLED_MODELS = 20
 
+/** What's remembered from the menu: one of the user's models, or makable's own picked on purpose. */
+export type ModelPick = AiModelChoice | 'default'
+
 /**
- * The menu entry the stored pick stands for, or null (makable's own model) when there's no pick or it's no
- * longer offered: the key was removed or refused, or the model was turned off.
+ * The model AI edits use, as a menu entry, or null for makable's own. The stored pick while the menu still offers
+ * it; otherwise (no pick yet, or the key was removed or refused, or the model turned off) the user's first own
+ * model, and makable's only when they have none. makable's own is only used over theirs when picked on purpose.
  */
-export function findPick(pick: AiModelChoice | null | undefined, options: AiModelOption[]): AiModelOption | null {
-  if (!pick) return null
-  return options.find((o) => o.keyId === pick.keyId && o.model === pick.model) ?? null
+export function resolvePick(pick: ModelPick | undefined, options: AiModelOption[]): AiModelOption | null {
+  const hasDefault = options.some((o) => !o.keyId)
+  if (pick === 'default' && hasDefault) return null
+  const picked = pick && pick !== 'default' ? options.find((o) => o.keyId === pick.keyId && o.model === pick.model) : undefined
+  return picked ?? options.find((o) => o.keyId) ?? null
+}
+
+/** What's remembered when the user picks an entry. */
+export function toPick(option: AiModelOption | null): ModelPick {
+  return toChoice(option) ?? 'default'
 }
 
 /** What the request sends: nothing for makable's own model. */
@@ -55,9 +66,4 @@ export function modelStatus(options: AiModelOption[], keys: Pick<AiKey, 'status'
   if (options.length > 0) return 'ready'
   if (keys.some((k) => k.status === 'valid')) return 'no-models'
   return keys.length > 0 ? 'key-invalid' : 'no-key'
-}
-
-/** The model a request uses when the user hasn't picked one: makable's, or else their first. */
-export function fallbackOption(options: AiModelOption[]): AiModelOption | null {
-  return options.some((o) => !o.keyId) ? null : (options[0] ?? null)
 }

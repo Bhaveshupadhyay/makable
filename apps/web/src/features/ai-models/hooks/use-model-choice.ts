@@ -1,12 +1,12 @@
 import { useSession } from '@/features/auth'
-import { fallbackOption, findPick, type ModelStatus, modelStatus, toChoice } from '../lib/model-options'
+import { type ModelStatus, modelStatus, resolvePick, toChoice, toPick } from '../lib/model-options'
 import { useModelPickStore } from '../store'
 import type { AiModelOption } from '../types'
 import { useAiKeys, useModelOptions } from './use-ai-keys'
 
 /**
- * The model AI edits use: the signed-in user's pick from the chat's menu, while it's still offered, else
- * makable's own, else (no makable model) their first. `choice` is what goes in the request (undefined for
+ * The model AI edits use: the signed-in user's pick from the chat's menu while it's still offered, else their
+ * first own model, else makable's (see `resolvePick`). `choice` is what goes in the request (undefined for
  * makable's own).
  */
 export function useModelChoice() {
@@ -14,10 +14,10 @@ export function useModelChoice() {
   const { data: options = [] } = useModelOptions()
   const pick = useModelPickStore((s) => (login ? s.picks[login] : undefined))
   const setPick = useModelPickStore((s) => s.setPick)
-  const selected = findPick(pick, options) ?? fallbackOption(options)
+  const selected = resolvePick(pick, options)
 
   function select(option: AiModelOption | null) {
-    if (login) setPick(login, toChoice(option))
+    if (login) setPick(login, toPick(option))
   }
 
   return { options, selected, choice: toChoice(selected), select }

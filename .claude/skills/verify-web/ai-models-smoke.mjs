@@ -136,39 +136,44 @@ try {
   await aiBox.waitFor()
 
   const picker = page.getByRole('button', { name: /^AI model:/ })
-  expect((await picker.getAttribute('aria-label')) === 'AI model: makable default', 'makable’s own model should be the default')
+  // With models of their own, those come first: makable default only when picked.
+  expect((await picker.getAttribute('aria-label')) === 'AI model: gpt-5', 'the user’s first model should be used, not makable default')
   await aiBox.fill('Make it bold')
   await aiBox.press('Enter')
   await page.getByText(/needs a deeper edit/).last().waitFor()
-  expect(!('model' in backend.edits.at(-1)), 'makable’s own model is sent as no model')
+  const sent = backend.edits.at(-1).model
+  expect(sent?.keyId === KEY_ID && sent?.model === 'gpt-5', `the user’s model should be sent, got ${JSON.stringify(sent)}`)
 
   // A finished request closes the box; select again.
   await frame.locator('[data-content]').first().click()
   await picker.click()
   await page.getByRole('menuitem', { name: 'Manage models' }).waitFor()
   await shot('ai-model-menu.png')
-  await page.getByRole('menuitem', { name: 'gpt-5' }).click()
-  await page.getByRole('button', { name: 'AI model: gpt-5' }).waitFor()
+  await page.getByRole('menuitem', { name: 'makable default' }).click()
+  await page.getByRole('button', { name: 'AI model: makable default' }).waitFor()
   await aiBox.fill('Make it bold')
   await aiBox.press('Enter')
   await page.getByText(/needs a deeper edit/).nth(1).waitFor()
-  const sent = backend.edits.at(-1).model
-  expect(sent?.keyId === KEY_ID && sent?.model === 'gpt-5', `the pick should be sent, got ${JSON.stringify(sent)}`)
-  console.log('✓ AI box: makable default first, then the picked model is shown and sent')
+  expect(!('model' in backend.edits.at(-1)), 'makable’s own model is sent as no model')
+  console.log('✓ AI box: the user’s own model is used first; makable default only when picked, sent as no model')
 
-  // 3. The pick survives a reload, and a refused key drops back to makable's own.
+  // 3. Picks survive a reload, and a refused key drops back to makable's own.
   await page.reload()
   await page.getByRole('button', { name: 'Edit with AI' }).last().click()
   await frame.locator('[data-theme="terminal"]').waitFor({ timeout: 60000 })
   await frame.locator('[data-content]').first().click()
-  await page.getByRole('button', { name: 'AI model: gpt-5' }).waitFor()
+  await page.getByRole('button', { name: 'AI model: makable default' }).waitFor()
+  await picker.click()
+  await page.getByRole('menuitem', { name: 'o4-mini' }).click()
+  await page.getByRole('button', { name: 'AI model: o4-mini' }).waitFor()
   backend.editAnswers.push(fail(422, 'ai_key_invalid', "The AI provider didn't accept your API key. Check it in Settings."))
   await aiBox.fill('Make it bold')
   await aiBox.press('Enter')
   await page.getByText("didn't accept your API key").waitFor()
+  expect(backend.edits.at(-1).model?.model === 'o4-mini', 'the new pick should be sent')
   await popover.getByRole('link', { name: 'Manage AI models' }).waitFor()
   await page.getByRole('button', { name: 'AI model: makable default' }).waitFor()
-  console.log('✓ AI box: the pick is remembered; a refused key links to Settings and falls back to makable default')
+  console.log('✓ AI box: picks are remembered; a refused key links to Settings and falls back to makable default')
 
   expect(errors.length === 0, `page errors:\n${errors.join('\n')}`)
   console.log('All AI model checks passed')
