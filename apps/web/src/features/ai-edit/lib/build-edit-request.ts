@@ -3,6 +3,7 @@ import {
   type AiEditRequest,
   type AiEditTarget,
   type AiEditTurn,
+  type AiModelChoice,
   aiEditRequestSchema,
   MAX_FILE_CHARS,
   MAX_FILES,
@@ -30,6 +31,8 @@ export function buildEditRequest(
   template: Template,
   files: Record<string, string>,
   history: AiEditTurn[] = [],
+  /** The user's own model, if they picked one; left out for makable's. */
+  model?: AiModelChoice,
 ): AiEditRequest {
   const fileTree = Object.keys(files).filter((path) => SAFE_REPO_PATH.test(path)).sort()
   return aiEditRequestSchema.parse({
@@ -39,6 +42,7 @@ export function buildEditRequest(
     fileTree: fileTree.slice(0, 500),
     files: pickFiles(files, target, template.contentPath),
     history: history.slice(-MAX_HISTORY).map(fitTurn),
+    ...(model && { model }),
   })
 }
 

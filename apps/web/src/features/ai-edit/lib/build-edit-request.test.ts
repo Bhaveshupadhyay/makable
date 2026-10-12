@@ -61,3 +61,9 @@ test('targetLabel names the section, path and short text', () => {
   expect(targetLabel(target({ tag: 'li', contentPath: 'skills.0', text: 'TypeScript', section: { tag: 'section', id: 'skills', heading: 'Skills' } }))).toBe('Skills › skills.0 “TypeScript”')
   expect(targetLabel(target({ tag: 'h1' }))).toBe('<h1>')
 })
+
+test('buildEditRequest names the picked model only when there is one', () => {
+  const model = { keyId: '6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b', model: 'gpt-5' }
+  expect(buildEditRequest('Make it green', null, template, files, [], model).model).toEqual(model)
+  expect('model' in buildEditRequest('Make it green', null, template, files)).toBe(false)
+})

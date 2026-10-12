@@ -1,6 +1,7 @@
 import { type AiEditRequest, type AiEditTarget, type AiEditTurn, MAX_INSTRUCTION, type TemplateEntry } from '@makable/shared'
 import { useIsMutating, useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
+import { useModelChoice, useModelRejected } from '@/features/ai-models'
 import type { SiteDraft } from '@/features/visual-edit'
 import { ApiError } from '@/shared/lib/api-client'
 import { type AiEditResponse, sendAiEdit } from '../api/ai-edit'
@@ -8,6 +9,10 @@ import { applyEditResult } from '../lib/apply-edit-result'
 import { buildEditRequest, targetLabel } from '../lib/build-edit-request'
 
 const MUTATION_KEY = ['ai-edit']
+// Errors that mean the picked model can't be used any more.
+const MODEL_ERRORS = new Set(['ai_key_invalid', 'ai_key_not_found', 'ai_model_not_enabled', 'ai_model_required'])
+// Errors the user fixes in Settings → AI models (another key or model), so the box links there.
+const SETTINGS_ERRORS = new Set([...MODEL_ERRORS, 'ai_unavailable', 'ai_rate_limited'])
 
 /**
  * True while an AI request is pending. Usable before `useAiEdit` in the same component, so other
@@ -48,7 +53,16 @@ type AiOutcome = { applied: true; changed: string[] } | { applied: false; reason
 
 /** Sends AI edit requests and applies the returned file edits. */
 export function useAiEdit({ template, files, draft, onApply, onUndo, previewError, onSent, history, onRecord, onAmend }: UseAiEditOptions) {
-  const mutation = useMutation({ mutationKey: MUTATION_KEY, mutationFn: sendAiEdit })
+  const { choice } = useModelChoice()
+  const modelRejected = useModelRejected()
+  const mutation = useMutation({
+    mutationKey: MUTATION_KEY,
+    mutationFn: sendAiEdit,
+    onError: (error, { request }) => {
+      // The picked key was refused or removed, or the model turned off: the menu drops it and falls back.
+      if (error instanceof ApiError && MODEL_ERRORS.has(error.code ?? '')) void modelRejected(request.model, error.code ?? '')
+    },
+  })
   // Set when the request fails validation before sending, so Send never silently does nothing.
   const [invalid, setInvalid] = useState<string | null>(null)
   // The response arrives later: apply it to the files and draft as they are then.
@@ -70,7 +84,7 @@ export function useAiEdit({ template, files, draft, onApply, onUndo, previewErro
   function send(instruction: string, target: AiEditTarget | null, onDone?: () => void) {
     let request: AiEditRequest
     try {
-      request = buildEditRequest(instruction, target, template, files, history)
+      request = buildEditRequest(instruction, target, template, files, history, choice)
     } catch {
       setInvalid(`This request can't be sent. Keep the instruction under ${MAX_INSTRUCTION} characters.`)
       return
@@ -138,6 +152,8 @@ export function useAiEdit({ template, files, draft, onApply, onUndo, previewErro
     stop,
     pending: mutation.isPending,
     error: mutation.error && errorMessage(mutation.error),
+    /** The error is about the model or key, so Settings → AI models can fix it. */
+    errorInSettings: mutation.error instanceof ApiError && SETTINGS_ERRORS.has(mutation.error.code ?? ''),
     invalid,
   }
 }

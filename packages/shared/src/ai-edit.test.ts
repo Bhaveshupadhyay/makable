@@ -27,3 +27,10 @@ test('requests are validated: unsafe paths and oversized fields are rejected', (
   const longHistory = { ...request, history: Array.from({ length: 11 }, () => request.history[0]) }
   expect(aiEditRequestSchema.safeParse(longHistory).success).toBe(false)
 })
+
+test('a request may name one of the user\'s models', () => {
+  const keyId = '6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b'
+  expect(aiEditRequestSchema.safeParse({ ...request, model: { keyId, model: 'meta-llama/llama-3.3-70b:free' } }).success).toBe(true)
+  expect(aiEditRequestSchema.safeParse({ ...request, model: { keyId, model: 'has space' } }).success).toBe(false)
+  expect(aiEditRequestSchema.safeParse({ ...request, model: { keyId: 'nope', model: 'gpt-5' } }).success).toBe(false)
+})

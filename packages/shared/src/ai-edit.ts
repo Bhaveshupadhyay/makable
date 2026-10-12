@@ -58,6 +58,13 @@ export const aiEditTurnSchema = z.object({
 })
 export type AiEditTurn = z.infer<typeof aiEditTurnSchema>
 
+/** A model id as providers write them, e.g. `gpt-4.1-mini` or `meta-llama/llama-3.3-70b:free`. makable-backend: `MODEL_ID`. */
+export const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$/
+
+/** The model the user picked in the chat's menu: one of the models they turned on for their own key. */
+export const aiModelChoiceSchema = z.object({ keyId: z.uuid(), model: z.string().regex(MODEL_ID) })
+export type AiModelChoice = z.infer<typeof aiModelChoiceSchema>
+
 export const aiEditRequestSchema = z.object({
   instruction: z.string().trim().min(1).max(MAX_INSTRUCTION),
   /** Null when nothing was selected: the request is about the whole page. */
@@ -76,5 +83,7 @@ export const aiEditRequestSchema = z.object({
   files: z.array(aiEditFileSchema).max(MAX_FILES),
   /** Earlier requests in this project, oldest first. */
   history: z.array(aiEditTurnSchema).max(MAX_HISTORY),
+  /** Left out for makable's own model. */
+  model: aiModelChoiceSchema.optional(),
 })
 export type AiEditRequest = z.infer<typeof aiEditRequestSchema>

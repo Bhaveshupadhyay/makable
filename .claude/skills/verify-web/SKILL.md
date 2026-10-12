@@ -39,6 +39,12 @@ Netlify with the secret added on GitHub (deploy refused until it's there, a fail
 `publish-token.png`, `publish-live.png`, `publish-failed.png`. It never reaches GitHub or a hosting platform; test a real
 publish by hand with the backend running.
 
+**AI models** (Settings and the AI box's model menu) also need a signed-in session: `ai-models-smoke.mjs`, run like
+`publish-smoke.mjs` (dev server without mock auth). It starts with no makable model and no key (AI mode asks for a key
+and links to Settings), adds a refused key, then a good one, chooses two models, checks
+the key is never on the page or in localStorage, picks a model in the AI box and checks it's sent, reloads, and checks a
+refused key falls back to makable default. Screenshots: `ai-needs-key.png`, `ai-settings-choose.png`, `ai-settings.png`, `ai-model-menu.png`.
+
 When a feature adds a new flow, extend `smoke.mjs` here (or `publish-smoke.mjs` for publishing), rather than writing a
 one-off script.
 Notes: on macOS, Home/End scroll the page instead of moving the caret, even in an editable. Use `Meta+ArrowLeft/Right` to move the caret in tests. The chat's GitHub lookup calls the public GitHub API (60 req/h per IP), and the preview needs network access to the CodeSandbox bundler, the jsDelivr CDN (Tailwind and the Monaco editor) and the published template catalog on GitHub Pages.
