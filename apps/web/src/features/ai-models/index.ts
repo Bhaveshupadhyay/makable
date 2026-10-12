@@ -1,6 +1,6 @@
 export { AddKeyPrompt } from './components/add-key-prompt'
 export { ModelPicker } from './components/model-picker'
-export { useRefreshAiModels } from './hooks/use-ai-keys'
+export { useModelRejected } from './hooks/use-ai-keys'
 export { useModelChoice, useModelStatus } from './hooks/use-model-choice'
 export type { ModelStatus } from './lib/model-options'
 export { AiSettingsPage } from './pages/ai-settings-page'

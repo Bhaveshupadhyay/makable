@@ -67,3 +67,14 @@ export function modelStatus(options: AiModelOption[], keys: Pick<AiKey, 'status'
   if (keys.some((k) => k.status === 'valid')) return 'no-models'
   return keys.length > 0 ? 'key-invalid' : 'no-key'
 }
+
+/**
+ * The menu without what an AI edit was just refused for: the whole key when the provider refused it or it's gone
+ * (`ai_key_invalid`, `ai_key_not_found`), the one model when it was turned off (`ai_model_not_enabled`).
+ */
+export function dropRejected(options: AiModelOption[], choice: AiModelChoice | undefined, code: string): AiModelOption[] {
+  if (!choice) return options
+  if (code === 'ai_key_invalid' || code === 'ai_key_not_found') return options.filter((o) => o.keyId !== choice.keyId)
+  if (code === 'ai_model_not_enabled') return options.filter((o) => o.keyId !== choice.keyId || o.model !== choice.model)
+  return options
+}

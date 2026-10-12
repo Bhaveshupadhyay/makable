@@ -16,11 +16,12 @@ type ModelChooserProps = {
 
 /** Checkboxes for the models a key shows in the chat's menu, saved together. */
 export function ModelChooser({ aiKey, available, onDone }: ModelChooserProps) {
-  const [enabled, setEnabled] = useState(aiKey.models)
+  // Only models the provider still lists: the key's saved list may predate the check that dropped one.
+  const [enabled, setEnabled] = useState(() => aiKey.models.filter((m) => available.includes(m)))
   const [query, setQuery] = useState('')
   const save = useSetKeyModels()
   // Turned-on models first, so they stay easy to find in a long list.
-  const shown = filterModels([...enabled.filter((m) => available.includes(m)), ...available.filter((m) => !enabled.includes(m))], query)
+  const shown = filterModels([...enabled, ...available.filter((m) => !enabled.includes(m))], query)
   const full = enabled.length >= MAX_ENABLED_MODELS
 
   return (

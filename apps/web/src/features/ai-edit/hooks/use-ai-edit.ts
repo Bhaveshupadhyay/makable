@@ -1,7 +1,7 @@
 import { type AiEditRequest, type AiEditTarget, type AiEditTurn, MAX_INSTRUCTION, type TemplateEntry } from '@makable/shared'
 import { useIsMutating, useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { useModelChoice, useRefreshAiModels } from '@/features/ai-models'
+import { useModelChoice, useModelRejected } from '@/features/ai-models'
 import type { SiteDraft } from '@/features/visual-edit'
 import { ApiError } from '@/shared/lib/api-client'
 import { type AiEditResponse, sendAiEdit } from '../api/ai-edit'
@@ -54,13 +54,13 @@ type AiOutcome = { applied: true; changed: string[] } | { applied: false; reason
 /** Sends AI edit requests and applies the returned file edits. */
 export function useAiEdit({ template, files, draft, onApply, onUndo, previewError, onSent, history, onRecord, onAmend }: UseAiEditOptions) {
   const { choice } = useModelChoice()
-  const refreshModels = useRefreshAiModels()
+  const modelRejected = useModelRejected()
   const mutation = useMutation({
     mutationKey: MUTATION_KEY,
     mutationFn: sendAiEdit,
-    onError: (error) => {
-      // The picked key was refused or removed, or the model turned off: the menu falls back to makable's own.
-      if (error instanceof ApiError && MODEL_ERRORS.has(error.code ?? '')) void refreshModels()
+    onError: (error, { request }) => {
+      // The picked key was refused or removed, or the model turned off: the menu drops it and falls back.
+      if (error instanceof ApiError && MODEL_ERRORS.has(error.code ?? '')) void modelRejected(request.model, error.code ?? '')
     },
   })
   // Set when the request fails validation before sending, so Send never silently does nothing.

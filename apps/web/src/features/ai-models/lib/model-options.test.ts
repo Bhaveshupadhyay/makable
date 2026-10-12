@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { AiModelOption } from '../types'
-import { filterModels, groupOptions, MAX_ENABLED_MODELS, modelStatus, resolvePick, toChoice, toggleModel, toPick } from './model-options'
+import { dropRejected, filterModels, groupOptions, MAX_ENABLED_MODELS, modelStatus, resolvePick, toChoice, toggleModel, toPick } from './model-options'
 
 const KEY_A = '6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b'
 const KEY_B = '0b5e2c1d-7a8f-4e3b-9c2d-1e0f3a4b5c6d'
@@ -67,4 +67,13 @@ test('the status says what AI edits are missing', () => {
   expect(modelStatus([], [{ status: 'valid' }])).toBe('no-models')
   expect(modelStatus([], [{ status: 'invalid' }])).toBe('key-invalid')
   expect(modelStatus([], [{ status: 'invalid' }, { status: 'valid' }])).toBe('no-models')
+})
+
+test('a refused key or model leaves the menu right away', () => {
+  const pick = { keyId: KEY_A, model: 'gpt-5' }
+  expect(dropRejected(options, pick, 'ai_key_invalid').map((o) => o.model)).toEqual(['auto', 'llama-3.3-70b-versatile'])
+  expect(dropRejected(options, pick, 'ai_key_not_found')).toHaveLength(2)
+  expect(dropRejected(options, pick, 'ai_model_not_enabled').map((o) => o.model)).toEqual(['auto', 'o4-mini', 'llama-3.3-70b-versatile'])
+  expect(dropRejected(options, pick, 'ai_model_required')).toBe(options)
+  expect(dropRejected(options, undefined, 'ai_key_invalid')).toBe(options)
 })
