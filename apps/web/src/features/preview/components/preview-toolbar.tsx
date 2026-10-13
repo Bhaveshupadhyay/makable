@@ -1,4 +1,4 @@
-import { Code2, Eye, LoaderCircle, RotateCw } from 'lucide-react'
+import { Code2, Eye, LoaderCircle, Maximize, RotateCw } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '@/shared/lib/cn'
 import { Button } from '@/shared/ui/button'
@@ -15,6 +15,8 @@ type PreviewToolbarProps = {
   onDeviceChange: (device: Device) => void
   state: PreviewState
   onRefresh: () => void
+  /** Set when the browser supports full screen. */
+  onFullscreen?: () => void
   actions?: ReactNode
 }
 
@@ -29,7 +31,7 @@ const VIEWS = [
   { key: 'code', label: 'Code', icon: Code2 },
 ] as const
 
-export function PreviewToolbar({ view, onViewChange, device, onDeviceChange, state, onRefresh, actions }: PreviewToolbarProps) {
+export function PreviewToolbar({ view, onViewChange, device, onDeviceChange, state, onRefresh, onFullscreen, actions }: PreviewToolbarProps) {
   return (
     <div className="flex h-12 items-center justify-between gap-2 border-b px-3">
       <div className="flex items-center gap-2">
@@ -91,6 +93,11 @@ export function PreviewToolbar({ view, onViewChange, device, onDeviceChange, sta
         <Button variant="ghost" size="icon" aria-label="Refresh preview" onClick={onRefresh}>
           <RotateCw />
         </Button>
+        {onFullscreen && view !== 'code' && (
+          <Button variant="ghost" size="icon" aria-label="Full screen" title="Full screen" onClick={onFullscreen}>
+            <Maximize />
+          </Button>
+        )}
         {actions && <div className="ml-1 flex items-center gap-1 border-l pl-2">{actions}</div>}
       </div>
     </div>

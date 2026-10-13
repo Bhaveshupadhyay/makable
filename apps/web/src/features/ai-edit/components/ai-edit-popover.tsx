@@ -15,14 +15,16 @@ type AiEditPopoverProps = {
   target: AiEditTarget | null
   /** Where that element is, in the preview page's viewport. */
   anchor: Box | null
+  /** The scale the page is drawn at (from the preview's overlay slot). */
+  scale?: number
   onClear: () => void
 }
 
 /**
  * "Ask AI to make changes", floating next to the selected element. Render it in the preview's
- * overlay slot: it covers the frame's viewport exactly, so page coordinates need no conversion.
+ * overlay slot: it covers the frame's viewport exactly, so page coordinates times `scale` place it.
  */
-export function AiEditPopover({ ai, target, anchor, onClear }: AiEditPopoverProps) {
+export function AiEditPopover({ ai, target, anchor, scale = 1, onClear }: AiEditPopoverProps) {
   const overlayRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const bounds = useElementSize(overlayRef)
@@ -39,7 +41,7 @@ export function AiEditPopover({ ai, target, anchor, onClear }: AiEditPopoverProp
     if (target) inputRef.current?.focus()
   }, [target])
 
-  const place = target && anchor && bounds ? placePopover(anchor, bounds) : null
+  const place = target && anchor && bounds ? placePopover(scaleBox(anchor, scale), bounds) : null
 
   function submit(e?: FormEvent) {
     e?.preventDefault()
@@ -157,6 +159,9 @@ export function AiEditPopover({ ai, target, anchor, onClear }: AiEditPopoverProp
     </div>
   )
 }
+
+const scaleBox = (box: Box, scale: number): Box =>
+  scale === 1 ? box : { x: box.x * scale, y: box.y * scale, width: box.width * scale, height: box.height * scale }
 
 /** Banner while AI mode is on and nothing is selected yet. Asks for an API key first when there's no model to use. */
 export function AiEditHint() {

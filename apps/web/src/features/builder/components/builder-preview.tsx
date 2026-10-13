@@ -119,8 +119,10 @@ function LoadedPreview({ template, files: templateFiles, draft, onChange, builde
           {builder.aiMode && !edit.selection && <AiEditHint />}
         </>
       }
-      overlay={
-        builder.aiMode && <AiEditPopover ai={ai} target={edit.selection} anchor={edit.selectionRect} onClear={edit.clearSelection} />
+      overlay={(scale) =>
+        builder.aiMode && (
+          <AiEditPopover ai={ai} target={edit.selection} anchor={edit.selectionRect} scale={scale} onClear={edit.clearSelection} />
+        )
       }
     />
   )

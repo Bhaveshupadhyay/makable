@@ -15,6 +15,26 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
 const errors = []
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
 page.on('console', (m) => m.type() === 'error' && errors.push(`console: ${m.text()}`))
+// The preview may draw a wide page with CSS zoom (Desktop is 1280px, zoomed to fit the pane). Playwright's
+// clicks and boxes inside an iframe ignore that zoom, so measure and click with the real mouse instead.
+async function previewBox(page, locator) {
+  await locator.scrollIntoViewIfNeeded()
+  const r = await locator.evaluate((el) => {
+    const b = el.getBoundingClientRect()
+    return { x: b.x, y: b.y, width: b.width, height: b.height }
+  })
+  const f = await page.locator('iframe[title="Portfolio preview"]').evaluate((el) => {
+    const b = el.getBoundingClientRect()
+    const z = Number.parseFloat(getComputedStyle(el).zoom) || 1
+    return { x: b.x + el.clientLeft * z, y: b.y + el.clientTop * z, z }
+  })
+  return { x: f.x + r.x * f.z, y: f.y + r.y * f.z, width: r.width * f.z, height: r.height * f.z }
+}
+async function clickInPreview(page, locator) {
+  const b = await previewBox(page, locator)
+  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2)
+}
+
 // Editable contract: content elements carry data-content paths (see edit-template skill).
 // Catalog templates may show a field more than once (e.g. the name in nav and hero), hence `exact`.
 async function expectEditable(frame, label, { exact = true } = {}) {
@@ -31,7 +51,7 @@ async function expectVisualEdit(page, frame, label) {
   const original = (await name.textContent()).trim()
   const editor = frame.locator('.makable-editor')
   const editName = async (text, key = 'Enter') => {
-    await name.click()
+    await clickInPreview(page, name)
     await editor.waitFor()
     await page.keyboard.press('ControlOrMeta+A')
     await page.keyboard.press('Backspace')
@@ -136,20 +156,31 @@ try {
   const popover = page.getByRole('form', { name: 'Ask AI' })
   await page.getByText('Click anything in the preview to change it with AI').waitFor()
   const chip = frame.locator('[data-content="skills.0"]')
-  await chip.click()
+  await clickInPreview(page, chip)
   await page.getByText(/› skills\.0/).waitFor()
   const near = async () => {
-    const [el, box] = [await chip.boundingBox(), await popover.boundingBox()]
+    const [el, box] = [await previewBox(page, chip), await popover.boundingBox()]
     const gap = box.y >= el.y ? box.y - (el.y + el.height) : el.y - (box.y + box.height)
     if (gap < 0 || gap > 20) throw new Error(`AI box should sit next to the selected element (gap ${gap}px)`)
     return box.y
   }
   const before = await near()
   if (!(await aiBox.evaluate((el) => el === document.activeElement))) throw new Error('AI box should take focus after a selection')
-  // It follows the element when the preview scrolls.
-  await frame.locator('html').evaluate(() => window.scrollBy(0, 80))
+  // It follows the element when the preview scrolls. The desktop page (1280px, drawn scaled down to fit)
+  // may fit the frame, so give it room to scroll; the box moves by the scroll times the scale.
+  const scrolled = await frame.locator('html').evaluate(() => {
+    document.body.style.paddingBottom = '2000px'
+    const y = window.scrollY
+    window.scrollBy(0, 80)
+    return { by: window.scrollY - y, width: window.innerWidth }
+  })
+  const drawn = (await page.locator('iframe[title="Portfolio preview"]').boundingBox()).width
+  const expected = (scrolled.by * drawn) / scrolled.width
   await page.waitForTimeout(300)
-  if (Math.abs((await near()) - before) < 40) throw new Error('AI box did not follow the element on scroll')
+  const moved = before - (await near())
+  if (Math.abs(scrolled.by - 80) > 1 || Math.abs(moved - expected) > 3) {
+    throw new Error(`AI box did not follow the element on scroll (moved ${moved}px, expected ${expected}px)`)
+  }
   console.log('✓ AI edit: box opens next to the selected element, focused, and follows it on scroll')
   // AI edits run on makable-backend and need a real signed-in session. With mock auth (or no backend) the
   // backend answers 401 (or the proxy fails), so the AI steps are skipped and only the code view is checked.
@@ -168,7 +199,7 @@ try {
     for (const name of ['Edit text', 'Edit with AI', 'Undo', 'Redo']) {
       if (await page.getByRole('button', { name, exact: true }).last().isEnabled()) throw new Error(`${name} should be disabled while the AI works`)
     }
-    await frame.locator('[data-content="profile.name"]').first().click()
+    await clickInPreview(page, frame.locator('[data-content="profile.name"]').first())
     await page.waitForTimeout(300)
     if (!(await page.getByText(/› skills\.0/).isVisible())) throw new Error('clicks in the preview should not change the selection while the AI works')
     await shot('ai-edit-pending.png')
@@ -257,7 +288,7 @@ try {
   await page.getByRole('button', { name: 'Change template' }).click()
   // Undo history is in memory only (gone after the reload above), so make a fresh edit first.
   await page.getByRole('button', { name: 'Edit text' }).click()
-  await frame.locator('[data-content="profile.name"]').click()
+  await clickInPreview(page, frame.locator('[data-content="profile.name"]'))
   await page.keyboard.press('ControlOrMeta+A')
   await page.keyboard.type('Before switch')
   await page.keyboard.press('Enter')
