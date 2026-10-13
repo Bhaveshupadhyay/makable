@@ -24,6 +24,43 @@ test('points references to binary files at the hosted demo', () => {
   expect(files['main.js']).toBe(`img.src = '${BASE}assets/jpeg/mock.jpeg'; const other = './assets/jpeg/missing.jpeg'`)
 })
 
+test('resolves strings in scripts against the page first, like the browser', () => {
+  const js = 'a.src="./images/me.png";v.src="./video/v.webm";b("./models/c.enc");import("./chunk.js");x="./own.png"'
+  const files = parseTemplateFiles(
+    {
+      'assets/index-abc.js': js,
+      binary: { 'images/me.png': '', 'video/v.webm': '', 'models/c.enc': '', 'assets/own.png': '' },
+    },
+    BASE,
+  )
+  expect(files['assets/index-abc.js']).toBe(
+    `a.src="${BASE}images/me.png";v.src="${BASE}video/v.webm";b("${BASE}models/c.enc");import("./chunk.js");x="${BASE}assets/own.png"`,
+  )
+})
+
+test('points folder references with binary files in them at the hosted demo', () => {
+  const js = 'l.setDecoderPath("./draco/");new R().setPath("./models/").load("env.hdr");p="./assets/";q="./empty/"'
+  const files = parseTemplateFiles(
+    {
+      'assets/index.js': js,
+      'draco/draco_decoder.js': '',
+      binary: { 'draco/draco_decoder.wasm': '', 'models/env.hdr': '' },
+    },
+    BASE,
+  )
+  expect(files['assets/index.js']).toBe(
+    `l.setDecoderPath("${BASE}draco/");new R().setPath("${BASE}models/").load("env.hdr");p="./assets/";q="./empty/"`,
+  )
+})
+
+test('resolves CSS and HTML references against their own file', () => {
+  const files = parseTemplateFiles(
+    { 'css/a.css': '.x { background: url(./img/a.png) }', binary: { 'img/a.png': '', 'css/img/a.png': '' } },
+    BASE,
+  )
+  expect(files['css/a.css']).toBe(`.x { background: url(${BASE}css/img/a.png) }`)
+})
+
 test('ignores quoted text that is not a valid URL path', () => {
   const css = '.bar { width: "100%"; content: "%E0%A4%A"; } .bg { background: url(img/a.png) }'
   expect(parseTemplateFiles({ 'style.css': css, binary: { 'img/a.png': '' } }, BASE)['style.css']).toBe(
