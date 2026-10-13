@@ -22,12 +22,16 @@ type PreviewPaneProps = {
   code?: ReactNode
   /**
    * Floats over the frame, e.g. a popover anchored to an element in the page. It's placed in a
-   * box the size of the frame as drawn; position it with `absolute inset-px` to cover exactly the
+   * box the size of the frame as drawn; position it with `absolute inset-0` to cover exactly the
    * frame's viewport (inside its 1px border). The page may be drawn scaled down (see `fitFrame`),
    * so page coordinates times `scale` are overlay coordinates. The overlay itself isn't scaled.
    */
   overlay?: (scale: number) => ReactNode
 }
+
+/** The frame's border (`border`, 1px each side). It's on a wrapper outside the zoom, so the page keeps its full
+ * width: a border on the zoomed iframe is snapped to a whole screen pixel after zooming and eats into the page. */
+const FRAME_BORDER = 1
 
 /** Toolbar plus a device-sized iframe running the project in the browser. */
 export function PreviewPane({ preview: { iframeRef, state, refresh }, actions, banner, overlay, view = 'preview', onViewChange, code }: PreviewPaneProps) {
@@ -36,7 +40,9 @@ export function PreviewPane({ preview: { iframeRef, state, refresh }, actions, b
   const stageRef = useRef<HTMLDivElement>(null)
   const stage = useElementSize(stageRef)
   const { width: deviceWidth, grow } = DEVICES[device]
-  const { width, scale } = fitFrame(deviceWidth, stage?.width ?? 0, grow)
+  // The device width is the page's own (Tablet really is 768px); the border goes around it.
+  const room = Math.max(0, (stage?.width ?? 0) - 2 * FRAME_BORDER)
+  const { width, scale } = fitFrame(deviceWidth, room, grow)
   const fullscreen = useFullscreen(stageRef)
 
   return (
@@ -57,15 +63,19 @@ export function PreviewPane({ preview: { iframeRef, state, refresh }, actions, b
         ref={stageRef}
         className={cn('relative flex flex-1 justify-center overflow-hidden bg-muted', fullscreen.active ? 'p-0' : 'p-3', showCode && 'hidden')}
       >
-        {/* The page is laid out at `width` and drawn at `scale`; this box is its drawn size. CSS zoom,
-            not a transform: the page then renders at the drawn size (its devicePixelRatio drops by
-            `scale`) instead of rendering big and being shrunk, which made WebGL sites lag. */}
-        <div style={{ width: width * scale }} className="relative h-full">
+        {/* The page is laid out at `width` and drawn at `scale`; this box is its drawn size plus
+            the border. CSS zoom, not a transform: the page then renders at the drawn size (its
+            devicePixelRatio drops by `scale`) instead of rendering big and being shrunk, which
+            made WebGL sites lag. */}
+        <div
+          style={{ width: width * scale + 2 * FRAME_BORDER }}
+          className="relative h-full overflow-hidden rounded-md border bg-white shadow-sm"
+        >
           <iframe
             ref={iframeRef}
             title="Portfolio preview"
             style={{ width, height: `${100 / scale}%`, zoom: scale === 1 ? undefined : scale }}
-            className="rounded-md border bg-white shadow-sm"
+            className="block"
           />
           {overlay?.(scale)}
         </div>

@@ -7,5 +7,7 @@
  */
 export function fitFrame(width: number, available: number, grow = false): { width: number; scale: number } {
   if (available >= width) return { width: grow ? available : width, scale: 1 }
-  return { width, scale: available > 0 ? available / width : 1 }
+  // A drawn width of whole pixels: a fractional one is rounded when drawn, which can cost the page a
+  // pixel of its width (1279 for a 1280 page) and miss a breakpoint.
+  return { width, scale: available >= 1 ? Math.floor(available) / width : 1 }
 }

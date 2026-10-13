@@ -53,6 +53,23 @@ test('points folder references with binary files in them at the hosted demo', ()
   )
 })
 
+test('resolves module-relative URLs against the script first', () => {
+  const js = 'a=new URL("./logo.png", import.meta.url);b=new URL("./logo.png",import.meta.url).href;c="./logo.png"'
+  const files = parseTemplateFiles(
+    { 'assets/index.js': js, binary: { 'logo.png': '', 'assets/logo.png': '' } },
+    BASE,
+  )
+  expect(files['assets/index.js']).toBe(
+    `a=new URL("${BASE}assets/logo.png", import.meta.url);b=new URL("${BASE}assets/logo.png",import.meta.url).href;c="${BASE}logo.png"`,
+  )
+})
+
+test('leaves the root folder alone: bare "./" is a link to the home page', () => {
+  const js = 'e.jsx("a",{href:"./",className:"navbar-title"})'
+  const files = parseTemplateFiles({ 'assets/index.js': js, binary: { 'favicon.ico': '' } }, BASE)
+  expect(files['assets/index.js']).toBe(js)
+})
+
 test('resolves CSS and HTML references against their own file', () => {
   const files = parseTemplateFiles(
     { 'css/a.css': '.x { background: url(./img/a.png) }', binary: { 'img/a.png': '', 'css/img/a.png': '' } },

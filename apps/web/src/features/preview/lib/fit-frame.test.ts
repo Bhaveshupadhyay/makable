@@ -17,3 +17,8 @@ test('a fixed-width page stays its width in a wider pane', () => {
 test('an unmeasured or empty pane draws at full size', () => {
   expect(fitFrame(1280, 0, true)).toEqual({ width: 1280, scale: 1 })
 })
+
+test('a scaled page is drawn at a whole number of pixels, so rounding never narrows it', () => {
+  expect(fitFrame(1280, 960.6, true)).toEqual({ width: 1280, scale: 0.75 })
+  expect(fitFrame(768, 500.9).scale * 768).toBe(500)
+})

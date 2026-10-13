@@ -22,6 +22,26 @@ const PROVIDERS = [
 
 // --- The fake backend ---
 // `makableModel: false` is a backend without AI_BASE_URL: users need their own key.
+// The preview may draw a wide page with CSS zoom (Desktop is 1280px, zoomed to fit the pane). Playwright's
+// clicks and boxes inside an iframe ignore that zoom, so measure and click with the real mouse instead.
+async function previewBox(page, locator) {
+  await locator.scrollIntoViewIfNeeded()
+  const r = await locator.evaluate((el) => {
+    const b = el.getBoundingClientRect()
+    return { x: b.x, y: b.y, width: b.width, height: b.height }
+  })
+  const f = await page.locator('iframe[title="Portfolio preview"]').evaluate((el) => {
+    const b = el.getBoundingClientRect()
+    const z = Number.parseFloat(getComputedStyle(el).zoom) || 1
+    return { x: b.x + el.clientLeft * z, y: b.y + el.clientTop * z, z }
+  })
+  return { x: f.x + r.x * f.z, y: f.y + r.y * f.z, width: r.width * f.z, height: r.height * f.z }
+}
+async function clickInPreview(page, locator) {
+  const b = await previewBox(page, locator)
+  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2)
+}
+
 const backend = { makableModel: false, key: null, keyBodies: [], edits: [], editAnswers: [] }
 const ok = (data) => ({ status: 200, body: { success: true, data } })
 const fail = (status, code, message) => ({ status, body: { success: false, error: { code, message } } })
@@ -88,7 +108,7 @@ try {
   await frame.locator('[data-theme="terminal"]').waitFor({ timeout: 60000 })
   await page.getByRole('button', { name: 'Edit with AI' }).last().click()
   await page.getByText('AI edits run on your own API key').waitFor()
-  await frame.locator('[data-content]').first().click()
+  await clickInPreview(page, frame.locator('[data-content]').first())
   const popover = page.getByRole('form', { name: 'Ask AI' })
   await popover.getByRole('link', { name: 'Add an API key' }).waitFor()
   expect((await page.getByRole('textbox', { name: 'Ask AI to make changes' }).count()) === 0, 'no text box without a model')
@@ -131,7 +151,7 @@ try {
   await frame.locator('[data-theme="terminal"]').waitFor({ timeout: 60000 })
   // AI mode is still on from before Settings, now with a model to use.
   await page.getByText('Click anything in the preview to change it with AI').waitFor()
-  await frame.locator('[data-content]').first().click()
+  await clickInPreview(page, frame.locator('[data-content]').first())
   const aiBox = page.getByRole('textbox', { name: 'Ask AI to make changes' })
   await aiBox.waitFor()
 
@@ -145,7 +165,7 @@ try {
   expect(sent?.keyId === KEY_ID && sent?.model === 'gpt-5', `the user’s model should be sent, got ${JSON.stringify(sent)}`)
 
   // A finished request closes the box; select again.
-  await frame.locator('[data-content]').first().click()
+  await clickInPreview(page, frame.locator('[data-content]').first())
   await picker.click()
   await page.getByRole('menuitem', { name: 'Manage models' }).waitFor()
   await shot('ai-model-menu.png')
@@ -161,7 +181,7 @@ try {
   await page.reload()
   await page.getByRole('button', { name: 'Edit with AI' }).last().click()
   await frame.locator('[data-theme="terminal"]').waitFor({ timeout: 60000 })
-  await frame.locator('[data-content]').first().click()
+  await clickInPreview(page, frame.locator('[data-content]').first())
   await page.getByRole('button', { name: 'AI model: makable default' }).waitFor()
   await picker.click()
   await page.getByRole('menuitem', { name: 'o4-mini' }).click()

@@ -66,7 +66,7 @@ export function AiEditPopover({ ai, target, anchor, scale = 1, onClear }: AiEdit
   }
 
   return (
-    <div ref={overlayRef} className="pointer-events-none absolute inset-px overflow-hidden">
+    <div ref={overlayRef} className="pointer-events-none absolute inset-0 overflow-hidden">
       {place && target && (
         <form
           onSubmit={submit}

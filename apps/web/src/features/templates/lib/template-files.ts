@@ -6,6 +6,8 @@ export type TemplateFiles = Record<string, string>
 // Quoted or url(...) references in HTML, CSS and JS, e.g. `src="./assets/a.png"` or `url(../img/bg.png)`.
 const REFERENCE = /(["'(])([^"'()\s<>]+)(?=["')])/g
 const ABSOLUTE = /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i
+// What follows the closing quote of `new URL("./a.png", import.meta.url)`.
+const MODULE_URL = /^\s*,\s*import\.meta\.url\b/
 
 /**
  * Validates a template's `files.json` and returns its text files.
@@ -40,12 +42,17 @@ function pointAtHostedAssets(
 ) {
   // A URL string in a script resolves against the page, not the script (a built app's
   // `assets/index.js` uses "./images/a.png" for `/images/a.png`). Hand-written scripts
-  // sometimes mean their own folder, so that's tried second.
-  const bases = /\.[cm]?js$/.test(path) ? ['index.html', path] : [path]
+  // sometimes mean their own folder, so that's tried second. `new URL("...", import.meta.url)`
+  // is the exception: it's relative to the module, so the script comes first there.
+  const script = /\.[cm]?js$/.test(path)
+  // The root folder ("./") isn't a hosted folder even when it holds binaries: bare "./" is
+  // nearly always a link to the site's home page, which must stay in the preview.
   const isHosted = (resolved: string) =>
     resolved.endsWith('/') ? binaryFolders.has(resolved) : binaryPaths.has(resolved)
-  return code.replace(REFERENCE, (match, open: string, ref: string) => {
+  return code.replace(REFERENCE, (match, open: string, ref: string, at: number) => {
     if (ABSOLUTE.test(ref)) return match
+    const moduleRelative = script && MODULE_URL.test(code.slice(at + match.length + 1, at + match.length + 40))
+    const bases = !script ? [path] : moduleRelative ? [path, 'index.html'] : ['index.html', path]
     const resolved = bases.map((base) => resolveReference(ref, base)).find((r) => r !== undefined && isHosted(r))
     return resolved ? open + new URL(resolved, assetBase).href : match
   })
