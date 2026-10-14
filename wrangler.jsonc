@@ -1,5 +1,5 @@
 // The SPA on Cloudflare Workers: static files from apps/web/dist, and `/api/*` forwarded to the backend by
-// cloudflare/worker.ts. Workers Builds runs `bun install --frozen-lockfile && bun run build`, then `npx wrangler deploy`.
+// cloudflare/worker.ts. Deployed by .github/workflows/ci-cd.yml (a `[deploy]` commit on main, or a manual run).
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   // Must match the Worker's name in the Cloudflare dashboard, or Workers Builds refuses to deploy.

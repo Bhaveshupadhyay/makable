@@ -31,20 +31,30 @@ the Worker (`cloudflare/worker.ts`, logic in `cloudflare/api-proxy.ts`) forwards
 `enable_request_signal` flag, which lets Stop in the AI box abort the request to the API so the backend stops the model
 call. The `name` must match the Worker's name in the dashboard.
 
-Cloudflare → Workers & Pages → Create → Import a repository → this repo, then under the Worker's Settings → Build:
+### Deploys run from GitHub Actions
 
-| Setting | Value |
-| --- | --- |
-| Build command | `bun install --frozen-lockfile && bun run build` |
-| Deploy command | `npx wrangler deploy` (the `wrangler` pinned in `package.json`) |
-| Root directory | `/` (the repo root, where `wrangler.jsonc` is) |
+`.github/workflows/ci-cd.yml` checks every pull request and push to `main` (lint, typecheck, tests, build). Merging to
+`main` doesn't deploy. To deploy `main`, push a commit whose message has `[deploy]`:
 
-Build variables (Settings → Build → Variables and secrets):
+```sh
+git switch main && git pull
+git commit --allow-empty -m "Deploy [deploy]" && git push
+```
 
-| Variable | Value |
-| --- | --- |
-| `BUN_VERSION` | `1.4.2`, the version that writes `bun.lock` (the build image's default is older) |
-| `SKIP_DEPENDENCY_INSTALL` | `1`, so the build doesn't run its own install first; the build command installs with Bun |
+or run the workflow by hand (Actions → CI/CD → Run workflow on `main`, or `gh workflow run ci-cd.yml --ref main`).
+The deploy job builds the SPA and runs `wrangler deploy` (the version pinned in `package.json`).
+
+Once, on Cloudflare:
+
+1. Create the Worker if it doesn't exist (Workers & Pages → Create), named as in `wrangler.jsonc` (`makable`). If it's
+   connected to this repo (Settings → Build → Git repository), **disconnect** it, or Cloudflare deploys every push to
+   `main` itself.
+2. My Profile → API Tokens → Create Token → template **Edit Cloudflare Workers**, limited to your account (and the
+   zone of your custom domain). Copy the token.
+3. Copy your Account ID (Workers & Pages overview, right side).
+
+Once, on GitHub: Repo → Settings → Environments → new environment **`production`** (add required reviewers to approve
+each deploy), with the secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 
 To deploy from your machine instead: `bun run build && bun --bun wrangler deploy`.
 
