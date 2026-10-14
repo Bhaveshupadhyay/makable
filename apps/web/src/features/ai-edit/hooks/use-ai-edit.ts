@@ -3,6 +3,7 @@ import { useIsMutating, useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { useModelChoice, useModelRejected } from '@/features/ai-models'
 import type { SiteDraft } from '@/features/visual-edit'
+import { analytics } from '@/shared/lib/analytics'
 import { ApiError } from '@/shared/lib/api-client'
 import { type AiEditResponse, sendAiEdit } from '../api/ai-edit'
 import { applyEditResult } from '../lib/apply-edit-result'
@@ -79,13 +80,14 @@ export function useAiEdit({ template, files, draft, onApply, onUndo, previewErro
     amend: UseAiEditOptions['onAmend']
   } | null>(null)
   // The pending request, so Stop can abort it.
-  const inFlight = useRef<{ controller: AbortController; instruction: string; target: string | null } | null>(null)
+  const inFlight = useRef<{ controller: AbortController; instruction: string; target: string | null; requestId: string; elapsed: () => number } | null>(null)
 
   function send(instruction: string, target: AiEditTarget | null, onDone?: () => void) {
     let request: AiEditRequest
     try {
       request = buildEditRequest(instruction, target, template, files, history, choice)
     } catch {
+      analytics.track('ai_edit_invalid', { length: instruction.length })
       setInvalid(`This request can't be sent. Keep the instruction under ${MAX_INSTRUCTION} characters.`)
       return
     }
@@ -96,8 +98,39 @@ export function useAiEdit({ template, files, draft, onApply, onUndo, previewErro
     const record = onRecord
     const amend = onAmend
     const sentFor = template.id
-    inFlight.current = { controller, instruction: request.instruction, target: label }
+    const requestId = crypto.randomUUID()
+    const elapsed = stopwatch()
+    const model = modelName(request)
+    analytics.track('ai_edit_requested', {
+      request_id: requestId,
+      instruction: request.instruction,
+      template_id: request.template.id,
+      model,
+      model_key: request.model?.keyId ?? null,
+      target_label: label,
+      target_tag: target?.tag ?? null,
+      target_text: target?.text ?? null,
+      target_content_path: target?.contentPath ?? null,
+      target_section: target?.section ? (target.section.heading ?? target.section.id ?? target.section.tag) : null,
+      target_selector: target?.selector ?? null,
+      file_paths: request.files.map((f) => f.path),
+      history_turns: request.history.length,
+    })
+    inFlight.current = { controller, instruction: request.instruction, target: label, requestId, elapsed }
     mutation.mutate({ request, signal: controller.signal }, {
+      onError: (error) => {
+        // Stopped by the user: tracked as `ai_edit_stopped`.
+        if (controller.signal.aborted) return
+        analytics.track('ai_edit_failed', {
+          request_id: requestId,
+          instruction: request.instruction,
+          code: error instanceof ApiError ? (error.code ?? null) : null,
+          status: error instanceof ApiError ? error.status : null,
+          message: errorMessage(error),
+          model,
+          duration_ms: elapsed(),
+        })
+      },
       onSettled: () => {
         if (inFlight.current?.controller === controller) inFlight.current = null
       },
@@ -106,6 +139,22 @@ export function useAiEdit({ template, files, draft, onApply, onUndo, previewErro
         const outcome: AiOutcome =
           latest.current.templateId === sentFor ? settle(request, response) : { applied: false, reason: 'the template was changed while the AI worked' }
         const turn = { id: crypto.randomUUID(), instruction: request.instruction, target: label, reply: historyReply(response, outcome) }
+        const edits = response.tier === 1 ? response.edits : []
+        analytics.track('ai_edit_response', {
+          request_id: requestId,
+          instruction: request.instruction,
+          tier: response.tier,
+          summary: response.tier === 1 ? response.summary : '',
+          edits_count: edits.length,
+          edited_paths: [...new Set(edits.map((e) => e.path))],
+          edits: JSON.stringify(edits),
+          applied: outcome.applied,
+          not_applied_reason: outcome.applied ? null : outcome.reason,
+          escalation_reason: response.tier === 2 ? response.reason : null,
+          reply: message(response, outcome),
+          model,
+          duration_ms: elapsed(),
+        })
         record(turn)
         if (outcome.applied) applied.current = { draft: latest.current.draft, at: Date.now(), instruction: request.instruction, target: label, turn, amend }
         latest.current.onSent?.(request.instruction, label, message(response, outcome))
@@ -132,6 +181,7 @@ export function useAiEdit({ template, files, draft, onApply, onUndo, previewErro
     const { draft: now, onUndo: undo, onSent: log } = latest.current
     if (Date.now() - change.at > ROLLBACK_WINDOW_MS || now.portfolio !== change.draft.portfolio || now.files !== change.draft.files) return
     undo()
+    analytics.track('ai_edit_rolled_back', { instruction: change.instruction, error: previewError.message })
     change.amend(change.turn.id, `${change.turn.reply} This broke the preview, so it was undone.`)
     log?.(change.instruction, change.target, `That change broke the preview, so I undid it. Try rephrasing the request.`)
   }, [previewError])
@@ -142,6 +192,7 @@ export function useAiEdit({ template, files, draft, onApply, onUndo, previewErro
     if (!request) return
     inFlight.current = null
     request.controller.abort()
+    analytics.track('ai_edit_stopped', { request_id: request.requestId, instruction: request.instruction, duration_ms: request.elapsed() })
     // Detaches this request from the hook, so its abort error isn't shown and nothing is applied.
     mutation.reset()
     onSent?.(request.instruction, request.target, 'Stopped. Nothing was changed.')
@@ -156,6 +207,17 @@ export function useAiEdit({ template, files, draft, onApply, onUndo, previewErro
     errorInSettings: mutation.error instanceof ApiError && SETTINGS_ERRORS.has(mutation.error.code ?? ''),
     invalid,
   }
+}
+
+/** Milliseconds since it was started, for analytics. */
+function stopwatch(): () => number {
+  const start = performance.now()
+  return () => Math.round(performance.now() - start)
+}
+
+/** The model a request went to, for analytics. */
+function modelName(request: AiEditRequest): string {
+  return request.model?.model ?? 'makable-default'
 }
 
 /** What the history remembers about a finished request: what changed, or why nothing did. */

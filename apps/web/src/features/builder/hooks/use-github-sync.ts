@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { workspaceStateSchema } from '@makable/shared'
+import { analytics } from '@/shared/lib/analytics'
 import { ApiError } from '@/shared/lib/api-client'
 import { getLatestState, getPart, getState, type SavedState, saveBatch, saveBody } from '../api/workspace'
 import { WORKSPACE_REPO } from '../lib/conversation'
@@ -116,6 +117,10 @@ function createGithubSync(initial: Context, onStatus: (status: SyncStatus) => vo
   const restored = new Set<string>()
 
   const set = (next: SyncStatus) => {
+    // Problems only, once each: saves happen every few minutes and would drown everything else.
+    if ((next.state === 'error' || next.state === 'blocked' || next.state === 'conflict') && next.state !== status.state) {
+      analytics.track('github_sync_problem', { state: next.state, message: 'message' in next ? next.message : null })
+    }
     status = next
     onStatus(next)
   }
@@ -259,6 +264,7 @@ function createGithubSync(initial: Context, onStatus: (status: SyncStatus) => vo
 
   async function resolve(choice: 'keep' | 'load') {
     if (status.state !== 'conflict') return
+    analytics.track('github_sync_resolved', { choice: choice === 'keep' ? 'keep-local' : 'load-remote' })
     const { remoteSha } = status
     const projectId = useBuilderStore.getState().projectId
     try {

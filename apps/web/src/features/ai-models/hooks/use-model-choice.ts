@@ -1,4 +1,5 @@
 import { useSession } from '@/features/auth'
+import { analytics } from '@/shared/lib/analytics'
 import { type ModelStatus, modelStatus, resolvePick, toChoice, toPick } from '../lib/model-options'
 import { useModelPickStore } from '../store'
 import type { AiModelOption } from '../types'
@@ -17,7 +18,9 @@ export function useModelChoice() {
   const selected = resolvePick(pick, options)
 
   function select(option: AiModelOption | null) {
-    if (login) setPick(login, toPick(option))
+    if (!login) return
+    analytics.track('ai_model_picked', { model: option?.model ?? 'makable-default', provider: option?.provider ?? null, is_default: !option?.keyId })
+    setPick(login, toPick(option))
   }
 
   return { options, selected, choice: toChoice(selected), select }

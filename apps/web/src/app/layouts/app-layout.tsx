@@ -3,11 +3,13 @@ import { UserMenu } from '@/features/auth'
 import { SiteNav } from '@/features/marketing'
 import { HeaderSlot, HeaderSlotProvider } from '@/shared/ui/header-slot'
 import { MakableIcon } from '@/shared/ui/makable-logo'
+import { AnalyticsTracker } from '../analytics-tracker'
 
 /** App shell. Pages can add actions to the header (`HeaderActions`); the user menu shows once GitHub is connected. */
 export function AppLayout() {
   return (
     <HeaderSlotProvider>
+      <AnalyticsTracker />
       <div className="flex min-h-svh flex-col">
         <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-2 border-b bg-background/80 px-4 backdrop-blur-md">
           <div className="flex min-w-0 items-center gap-2 sm:gap-6">

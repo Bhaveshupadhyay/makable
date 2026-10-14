@@ -1,6 +1,8 @@
 import type { AiModelChoice } from '@makable/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MOCK_AUTH, useSession } from '@/features/auth'
+import { analytics } from '@/shared/lib/analytics'
+import { ApiError } from '@/shared/lib/api-client'
 import { addKey, checkKey, deleteKey, fetchKeys, fetchModelOptions, fetchProviders, setKeyModels } from '../api/ai-keys'
 import { dropRejected } from '../lib/model-options'
 import type { AiKeyChecked, AiModelOption } from '../types'
@@ -48,12 +50,17 @@ export function useModelRejected() {
   }
 }
 
-function useKeyMutation<TVars, TData>(mutationFn: (vars: TVars) => Promise<TData>, onData?: (data: TData) => void) {
+/** Analytics for a key mutation. Never send `vars` as they are: adding a key carries the key itself. */
+type KeyTracking<TVars, TData> = { success?: (data: TData, vars: TVars) => void; error?: (code: string | null, vars: TVars) => void }
+
+function useKeyMutation<TVars, TData>(mutationFn: (vars: TVars) => Promise<TData>, onData?: (data: TData) => void, track?: KeyTracking<TVars, TData>) {
   const queryClient = useQueryClient()
   const { login } = useAccount()
   return useMutation({
     mutationFn,
-    onSuccess: (data) => {
+    onError: (error, vars) => track?.error?.(error instanceof ApiError ? (error.code ?? null) : null, vars),
+    onSuccess: (data, vars) => {
+      track?.success?.(data, vars)
       onData?.(data)
       void queryClient.invalidateQueries({ queryKey: aiQueryKeys.keys(login) })
       void queryClient.invalidateQueries({ queryKey: aiQueryKeys.models(login) })
@@ -68,19 +75,29 @@ function useRememberAvailable() {
 }
 
 export function useAddKey() {
-  return useKeyMutation(addKey, useRememberAvailable())
+  return useKeyMutation(addKey, useRememberAvailable(), {
+    success: (data) => analytics.track('ai_key_added', { provider: data.key.provider, models_available: data.availableModels.length }),
+    error: (code, { provider }) => analytics.track('ai_key_add_failed', { provider, code }),
+  })
 }
 
 export function useCheckKey() {
-  return useKeyMutation(checkKey, useRememberAvailable())
+  return useKeyMutation(checkKey, useRememberAvailable(), {
+    success: (data) => analytics.track('ai_key_checked', { key_id: data.key.id, ok: data.key.status === 'valid', code: null }),
+    error: (code, keyId) => analytics.track('ai_key_checked', { key_id: keyId, ok: false, code }),
+  })
 }
 
 export function useSetKeyModels() {
-  return useKeyMutation(setKeyModels)
+  return useKeyMutation(setKeyModels, undefined, {
+    success: (_, { keyId, models }) => analytics.track('ai_key_models_saved', { key_id: keyId, models }),
+  })
 }
 
 export function useDeleteKey() {
-  return useKeyMutation(deleteKey)
+  return useKeyMutation(deleteKey, undefined, {
+    success: (_, keyId) => analytics.track('ai_key_removed', { key_id: keyId }),
+  })
 }
 
 /** A key's available models, if it was added or checked in this tab. */

@@ -1,5 +1,6 @@
 import type { AiEditTarget, Portfolio } from '@makable/shared'
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
+import { analytics } from '@/shared/lib/analytics'
 import { applyContentEdit } from '../lib/apply-content-edit'
 import { type ElementRect, HOST_SOURCE, type HostMessage, parseShimMessage, type ShimMode } from '../protocol'
 
@@ -72,6 +73,9 @@ export function useVisualEdit({ iframeRef, draft, onChange, selecting = false, o
     emit(next)
   }, [emit])
 
+  const canUndo = !locked && history.past.length > 0
+  const canRedo = !locked && history.future.length > 0
+
   const undo = useCallback(() => {
     const previous = history.past.at(-1)
     if (!previous || locked) return
@@ -110,6 +114,16 @@ export function useVisualEdit({ iframeRef, draft, onChange, selecting = false, o
       // A locked page shouldn't send these; ignore them if it does.
       if (locked && (msg.type === 'select' || msg.type === 'edit')) return
       if (msg.type === 'select') {
+        const target = msg.target
+        if (target) {
+          analytics.track('preview_element_selected', {
+            tag: target.tag,
+            text: target.text,
+            content_path: target.contentPath,
+            section: target.section ? (target.section.heading ?? target.section.id ?? target.section.tag) : null,
+            selector: target.selector,
+          })
+        }
         setSelection(msg.target)
         return setSelectionRect(msg.rect)
       }
@@ -118,8 +132,10 @@ export function useVisualEdit({ iframeRef, draft, onChange, selecting = false, o
       const result = applyContentEdit(current.portfolio, msg.path, msg.value)
       if (result.ok) {
         setError(null)
+        analytics.track('visual_text_edited', { path: msg.path, value: msg.value })
         commit({ ...current, portfolio: result.portfolio })
       } else {
+        analytics.track('visual_edit_rejected', { path: msg.path, error: result.error })
         setError(result.error)
       }
     }
@@ -134,12 +150,17 @@ export function useVisualEdit({ iframeRef, draft, onChange, selecting = false, o
       const target = e.target as HTMLElement | null
       if (target?.closest('input, textarea, [contenteditable]')) return
       e.preventDefault()
-      if (e.shiftKey) redo()
-      else undo()
+      if (e.shiftKey) {
+        if (canRedo) analytics.track('edit_redone', { source: 'keyboard' })
+        redo()
+      } else {
+        if (canUndo) analytics.track('edit_undone', { source: 'keyboard' })
+        undo()
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [undo, redo])
+  }, [undo, redo, canUndo, canRedo])
 
   // Validation errors fade after a few seconds.
   useEffect(() => {
@@ -172,8 +193,8 @@ export function useVisualEdit({ iframeRef, draft, onChange, selecting = false, o
     /** Applies a change from outside the preview (e.g. an AI edit) as one undoable step. */
     applyDraft: commit,
     error,
-    canUndo: !locked && history.past.length > 0,
-    canRedo: !locked && history.future.length > 0,
+    canUndo,
+    canRedo,
     undo,
     redo,
   }

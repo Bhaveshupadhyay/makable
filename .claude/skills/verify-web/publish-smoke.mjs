@@ -79,6 +79,22 @@ function answer(method, path, body, query) {
 
 const browser = await chromium.launch({ executablePath })
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+// Analytics must never carry a token or key. Mixpanel's requests are answered here (start the dev server with
+// VITE_ANALYTICS_DEBUG=true, and optionally a dummy VITE_MIXPANEL_TOKEN, to check them).
+const analyticsSeen = []
+page.on('console', (m) => m.text().startsWith('%c[analytics]') && analyticsSeen.push(m.text()))
+await page.route(/mixpanel\.com/, (route) => {
+  analyticsSeen.push(decodeURIComponent(route.request().postData() ?? ''))
+  return route.fulfill({ status: 200, body: '1' })
+})
+process.on('beforeExit', () => {
+  const all = analyticsSeen.join('\n')
+  const leaked = [TOKEN].filter((s) => all.includes(s))
+  const names = [...new Set(analyticsSeen.filter((l) => l.startsWith('%c')).map((l) => l.split(' ')[2]))]
+  console.log('analytics events:', names.join(', '))
+  console.log(leaked.length ? `✗ SECRET LEAKED to analytics: ${leaked}` : '✓ analytics: no token/key in any event')
+  if (leaked.length) process.exitCode = 1
+})
 const errors = []
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
 // The fake backend answers some requests with errors on purpose (409s, 404s); the browser logs those.

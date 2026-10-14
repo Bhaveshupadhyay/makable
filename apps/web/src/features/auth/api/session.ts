@@ -1,3 +1,4 @@
+import { analytics } from '@/shared/lib/analytics'
 import { ApiError, backendFetch } from '@/shared/lib/api-client'
 import { safeReturnTo } from '../lib/safe-return-to'
 import type { SessionUser } from '../types'
@@ -17,6 +18,7 @@ const MOCK_USER: SessionUser = {
  * `?authError=<code>` if it failed. */
 export function loginWithGithub(path = '/') {
   const returnTo = safeReturnTo(path)
+  analytics.track('sign_in_started', { return_to: returnTo })
   if (MOCK_AUTH) {
     localStorage.setItem(MOCK_KEY, '1')
     window.location.assign(returnTo)
