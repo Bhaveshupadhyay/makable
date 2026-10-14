@@ -7,6 +7,8 @@ import type { ChatContext, ChatEvent, Conversation } from './conversation'
  * characters, and that isn't sent either.
  */
 export function chatAnalytics(event: ChatEvent, before: Conversation, after: Conversation, ctx: ChatContext): AnalyticsEvent[] {
+  // The reducer ignored it (e.g. a GitHub lookup that finished after the user moved on): nothing happened.
+  if (after === before) return []
   const out: AnalyticsEvent[] = []
   const target = after.publish?.target ?? before.publish?.target ?? ctx.published?.target ?? null
   switch (event.type) {
@@ -22,6 +24,10 @@ export function chatAnalytics(event: ChatEvent, before: Conversation, after: Con
           signed_in: !!ctx.user,
         },
       })
+      // A template name typed in the chat picks it too.
+      if (after.portfolio && after.portfolio.template !== before.portfolio?.template) {
+        out.push({ event: 'template_selected', props: { template_id: after.portfolio.template, step: before.step, first_pick: !before.portfolio } })
+      }
       break
     case 'select-template':
       out.push({ event: 'template_selected', props: { template_id: event.template, step: before.step, first_pick: !before.portfolio } })

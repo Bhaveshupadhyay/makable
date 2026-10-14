@@ -6,13 +6,13 @@ import { analytics } from '@/shared/lib/analytics'
 /** Page views on every route change, and who the visitor is once the session is known. Renders nothing. */
 export function AnalyticsTracker() {
   const { pathname } = useLocation()
-  useEffect(() => {
-    analytics.page({ path: pathname, url: `${window.location.origin}${pathname}`, title: document.title, referrer: document.referrer })
-  }, [pathname])
-
   const session = useSession()
   const user = session.data
+  // Page views wait for the session check (signed in or not), so even the first one carries who's viewing.
+  const settled = !session.isPending
+
   const identified = useRef<string | null>(null)
+  // Declared before the page view effect: effects run in order, so the context is set first.
   useEffect(() => {
     if (!session.isSuccess) return
     analytics.setContext({ signed_in: !!user, login: user?.login })
@@ -29,6 +29,12 @@ export function AnalyticsTracker() {
       analytics.reset()
     }
   }, [session.isSuccess, user])
+
+  // The query string is left out on purpose: it can carry sign-in details. No route depends on it.
+  useEffect(() => {
+    if (!settled) return
+    analytics.page({ path: pathname, url: `${window.location.origin}${pathname}`, title: document.title, referrer: document.referrer })
+  }, [pathname, settled])
 
   return null
 }

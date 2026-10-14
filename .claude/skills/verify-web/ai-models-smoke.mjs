@@ -82,16 +82,39 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
 // Analytics must never carry a token or key. Mixpanel's requests are answered here (start the dev server with
 // VITE_ANALYTICS_DEBUG=true, and optionally a dummy VITE_MIXPANEL_TOKEN, to check them).
 const analyticsSeen = []
-page.on('console', (m) => m.text().startsWith('%c[analytics]') && analyticsSeen.push(m.text()))
+const analyticsNames = new Set()
+// The console logger passes the event's properties as a separate argument, so read the arguments, not just the text.
+const consoleReads = []
+page.on('console', (m) => {
+  if (!m.text().startsWith('%c[analytics]')) return
+  consoleReads.push(
+    Promise.all(m.args().map((arg) => arg.jsonValue().catch(() => null))).then((args) => {
+      analyticsNames.add(args[2])
+      analyticsSeen.push(JSON.stringify(args))
+    }),
+  )
+})
 await page.route(/mixpanel\.com/, (route) => {
-  analyticsSeen.push(decodeURIComponent(route.request().postData() ?? ''))
+  // Mixpanel sends `data` as JSON or base64 depending on the host: keep both readings.
+  const body = route.request().postData() ?? ''
+  const data = new URLSearchParams(body).get('data') ?? ''
+  let decoded = data
+  try {
+    JSON.parse(data)
+  } catch {
+    decoded = Buffer.from(data, 'base64').toString('utf8')
+  }
+  analyticsSeen.push(body, data, decoded)
   return route.fulfill({ status: 200, body: '1' })
 })
-process.on('beforeExit', () => {
+let analyticsChecked = false
+process.on('beforeExit', async () => {
+  if (analyticsChecked) return
+  analyticsChecked = true
+  await Promise.all(consoleReads)
   const all = analyticsSeen.join('\n')
   const leaked = [GOOD_KEY, 'sk-wrong'].filter((s) => all.includes(s))
-  const names = [...new Set(analyticsSeen.filter((l) => l.startsWith('%c')).map((l) => l.split(' ')[2]))]
-  console.log('analytics events:', names.join(', '))
+  console.log('analytics events:', [...analyticsNames].join(', '))
   console.log(leaked.length ? `✗ SECRET LEAKED to analytics: ${leaked}` : '✓ analytics: no token/key in any event')
   if (leaked.length) process.exitCode = 1
 })

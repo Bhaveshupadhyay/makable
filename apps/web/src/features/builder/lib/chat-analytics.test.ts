@@ -42,7 +42,9 @@ test('a guest asking for AI edits is prompted to connect GitHub, and connecting 
 })
 
 test('a pasted token is never tracked, only that one was entered', () => {
-  const { events } = step({ type: 'publish-token', last4: 'abcd' }, initialConversation())
+  const before = initialConversation()
+  // Stands in for the reducer's answer: only the mapping is under test here.
+  const events = chatAnalytics({ type: 'publish-token', last4: 'abcd' }, before, { ...before }, signedIn)
   expect(events[0].event).toBe('publish_token_entered')
   expect(JSON.stringify(events)).not.toContain('abcd')
 })
@@ -70,4 +72,16 @@ test('publish results and failures', () => {
   expect(done[0]).toMatchObject({ event: 'publish_succeeded', props: { target: 'github-pages', site_url: 'https://octocat.github.io' } })
   const failed = chatAnalytics({ type: 'publish-failed', code: 'publish_repo_taken', message: 'Taken' }, initialConversation(), initialConversation(), signedIn)
   expect(failed).toEqual([{ event: 'publish_failed', props: { code: 'publish_repo_taken', message: 'Taken' } }])
+})
+
+test('a template name typed in the chat counts as picking it', () => {
+  const atTemplate = step({ type: 'user-text', text: 'I want a portfolio' }, initialConversation()).after
+  const { events } = step({ type: 'user-text', text: 'Minimal' }, atTemplate)
+  expect(events.map((e) => e.event)).toContain('template_selected')
+  expect(events.find((e) => e.event === 'template_selected')?.props).toEqual({ template_id: 'minimal', step: 'template', first_pick: true })
+})
+
+test('events the reducer ignores are not tracked', () => {
+  const state = initialConversation()
+  expect(chatAnalytics({ type: 'github-failed', login: 'octocat' }, state, reduceConversation(state, { type: 'github-failed', login: 'octocat' }, signedIn), signedIn)).toEqual([])
 })

@@ -264,13 +264,18 @@ function createGithubSync(initial: Context, onStatus: (status: SyncStatus) => vo
 
   async function resolve(choice: 'keep' | 'load') {
     if (status.state !== 'conflict') return
-    analytics.track('github_sync_resolved', { choice: choice === 'keep' ? 'keep-local' : 'load-remote' })
     const { remoteSha } = status
     const projectId = useBuilderStore.getState().projectId
     try {
-      if (choice === 'keep') return await save('manual', remoteSha ?? (await getState(projectId))?.sha ?? null)
+      if (choice === 'keep') {
+        await save('manual', remoteSha ?? (await getState(projectId))?.sha ?? null)
+        // Counted only once it worked: save reports a failure through the status, not by throwing.
+        if ((status as SyncStatus).state === 'saved') analytics.track('github_sync_resolved', { choice: 'keep-local' })
+        return
+      }
       const found = await getState(projectId)
-      if (!found || !(await load(found, () => true))) set({ state: 'error', message: "Couldn't load the version on GitHub." })
+      if (found && (await load(found, () => true))) analytics.track('github_sync_resolved', { choice: 'load-remote' })
+      else set({ state: 'error', message: "Couldn't load the version on GitHub." })
     } catch (e) {
       failed(e)
     }
