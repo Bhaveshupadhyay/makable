@@ -1,15 +1,17 @@
 import { ArrowUp } from 'lucide-react'
 import { type FormEvent, type KeyboardEvent, useState } from 'react'
+import { cn } from '@/shared/lib/cn'
 import { Button } from '@/shared/ui/button'
 
 type ComposerProps = {
   onSend: (text: string) => void
   disabled?: boolean
   placeholder?: string
+  className?: string
 }
 
 /** Message box: Enter sends, Shift+Enter adds a line. */
-export function Composer({ onSend, disabled, placeholder = 'Message makable…' }: ComposerProps) {
+export function Composer({ onSend, disabled, placeholder = 'Message makable…', className }: ComposerProps) {
   const [text, setText] = useState('')
 
   function submit(e?: FormEvent) {
@@ -29,7 +31,10 @@ export function Composer({ onSend, disabled, placeholder = 'Message makable…' 
   return (
     <form
       onSubmit={submit}
-      className="flex items-end gap-2 rounded-2xl border bg-background p-2 shadow-xs focus-within:ring-[3px] focus-within:ring-ring/30"
+      className={cn(
+        'flex items-end gap-2 rounded-2xl border bg-background p-2 shadow-xs focus-within:ring-[3px] focus-within:ring-ring/30',
+        className,
+      )}
     >
       <textarea
         aria-label="Message"

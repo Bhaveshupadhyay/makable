@@ -1,18 +1,22 @@
-import { Sparkles } from 'lucide-react'
 import { Link, Outlet } from 'react-router'
 import { UserMenu } from '@/features/auth'
+import { SiteNav } from '@/features/marketing'
 import { HeaderSlot, HeaderSlotProvider } from '@/shared/ui/header-slot'
+import { MakableIcon } from '@/shared/ui/makable-logo'
 
 /** App shell. Pages can add actions to the header (`HeaderActions`); the user menu shows once GitHub is connected. */
 export function AppLayout() {
   return (
     <HeaderSlotProvider>
       <div className="flex min-h-svh flex-col">
-        <header className="flex h-14 items-center justify-between gap-2 border-b px-4">
-          <Link to="/" className="flex items-center gap-2 font-semibold">
-            <Sparkles className="size-5" />
-            makable
-          </Link>
+        <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-2 border-b bg-background/80 px-4 backdrop-blur-md">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-6">
+            <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
+              <MakableIcon className="size-6" />
+              <span className="hidden sm:inline">makable</span>
+            </Link>
+            <SiteNav />
+          </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <HeaderSlot className="flex items-center gap-1" />
             <UserMenu />

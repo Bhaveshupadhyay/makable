@@ -35,7 +35,7 @@ async function clickInPreview(page, locator) {
   await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2)
 }
 
-// Editable contract: content elements carry data-content paths (see edit-template skill).
+// Editable contract: content elements carry data-content paths.
 // Catalog templates may show a field more than once (e.g. the name in nav and hero), hence `exact`.
 async function expectEditable(frame, label, { exact = true } = {}) {
   for (const path of ['profile.name', 'profile.headline', 'projects.0.name']) {
@@ -89,9 +89,19 @@ try {
   console.log('✓ auth: guests land on the chat without signing in')
 
   // chat: start from a clean conversation
+  // header: About page with the animated footer logo, then back to the builder
+  await page.getByRole('navigation', { name: 'Site' }).getByRole('link', { name: 'About' }).click()
+  await page.getByRole('heading', { name: 'A website builder that talks with you' }).waitFor()
+  await page.locator('.mk-footer-logo').scrollIntoViewIfNeeded()
+  await page.locator('.mk-footer-logo[data-in-view]').waitFor()
+  await shot('about.png')
+  await page.getByRole('contentinfo').getByRole('link', { name: 'Builder' }).click()
+  console.log('✓ site: About page and the footer logo animation')
+
+  // A new chat is the landing page (prompt box, no Start over); a chat in progress gets reset.
   const startOver = page.getByRole('button', { name: 'Start over' })
-  await startOver.waitFor()
-  if (await startOver.isEnabled()) await startOver.click()
+  await startOver.or(page.getByRole('button', { name: 'I want a portfolio' })).first().waitFor()
+  if (await startOver.isVisible()) await startOver.click()
   const composer = page.getByRole('textbox', { name: 'Message' })
   const say = async (text) => {
     await composer.fill(text)
@@ -103,7 +113,7 @@ try {
   await page.getByRole('button', { name: 'I want a portfolio' }).click()
   await page.getByRole('group', { name: 'Templates' }).last().waitFor()
   await page.getByRole('button', { name: 'Terminal template' }).last().click()
-  console.log('✓ chat: intent → template picker → template chosen')
+  console.log('✓ chat: landing prompt → template picker → template chosen')
 
   // preview opens beside the chat as soon as a template is picked
   const started = Date.now()
@@ -354,17 +364,22 @@ try {
   await shot('builder-mobile.png')
   await page.setViewportSize({ width: 1280, height: 900 })
 
-  // export: the session downloads as a file with the chat, the site draft and the AI history
-  const download = page.waitForEvent('download')
-  await page.getByRole('button', { name: /^Export/ }).click()
-  const exported = await download
-  if (!/^makable-session-octocat-\d{4}-\d{2}-\d{2}\.json$/.test(exported.suggestedFilename())) throw new Error(`unexpected export name ${exported.suggestedFilename()}`)
-  const sessionPath = join(OUT_DIR, exported.suggestedFilename())
-  await exported.saveAs(sessionPath)
-  const session = JSON.parse(readFileSync(sessionPath, 'utf8'))
-  if (session.format !== 'makable-session' || session.login !== 'octocat' || !session.conversation.portfolio?.profile.headline) throw new Error('the exported session is missing its content')
-  const exportedMessages = session.conversation.messages.length
-  console.log(`✓ session: exported ${exportedMessages} messages and the site draft`)
+  // Export/Import are hidden in the header for now (builder-page.tsx); these steps run once they're back.
+  const sessionUi = (await page.getByRole('button', { name: /^Export/ }).count()) > 0
+  let sessionPath, exportedMessages
+  if (sessionUi) {
+    // export: the session downloads as a file with the chat, the site draft and the AI history
+    const download = page.waitForEvent('download')
+    await page.getByRole('button', { name: /^Export/ }).click()
+    const exported = await download
+    if (!/^makable-session-octocat-\d{4}-\d{2}-\d{2}\.json$/.test(exported.suggestedFilename())) throw new Error(`unexpected export name ${exported.suggestedFilename()}`)
+    sessionPath = join(OUT_DIR, exported.suggestedFilename())
+    await exported.saveAs(sessionPath)
+    const session = JSON.parse(readFileSync(sessionPath, 'utf8'))
+    if (session.format !== 'makable-session' || session.login !== 'octocat' || !session.conversation.portfolio?.profile.headline) throw new Error('the exported session is missing its content')
+    exportedMessages = session.conversation.messages.length
+    console.log(`✓ session: exported ${exportedMessages} messages and the site draft`)
+  } else console.log('- session: export/import skipped (hidden in the header)')
 
   // start over: back to the greeting, preview closed
   await page.getByRole('button', { name: 'Start over' }).click()
@@ -372,23 +387,25 @@ try {
   if (await page.locator('iframe[title="Portfolio preview"]').count()) throw new Error('preview still open after start over')
   console.log('✓ chat: start over')
 
-  // import: a broken file is refused; the exported file replaces the session after asking
-  const sessionInput = page.locator('input[type="file"][accept*="json"]')
-  await sessionInput.setInputFiles({ name: 'notes.json', mimeType: 'application/json', buffer: Buffer.from('{"hello":1}') })
-  await page.getByRole('alert').filter({ hasText: "That file isn't a makable session." }).waitFor()
-  await sessionInput.setInputFiles(sessionPath)
-  const confirm = page.getByRole('dialog', { name: 'Replace session' })
-  await confirm.getByText(`${exportedMessages} messages`).waitFor()
-  await shot('session-import.png')
-  await confirm.getByRole('button', { name: 'Cancel' }).click()
-  if (await page.locator('iframe[title="Portfolio preview"]').count()) throw new Error('cancel should leave the session alone')
-  await sessionInput.setInputFiles(sessionPath)
-  await confirm.getByRole('button', { name: 'Replace' }).click()
-  await assistantSays('Imported your session from')
-  await frame.getByText('static edited').first().waitFor({ timeout: 60000 })
-  console.log('✓ session: a broken file is refused; import asks, then brings back the chat and the site')
-  await page.getByRole('button', { name: 'Start over' }).click()
-  await page.getByRole('button', { name: 'I want a portfolio' }).waitFor()
+  if (sessionUi) {
+    // import: a broken file is refused; the exported file replaces the session after asking
+    const sessionInput = page.locator('input[type="file"][accept*="json"]')
+    await sessionInput.setInputFiles({ name: 'notes.json', mimeType: 'application/json', buffer: Buffer.from('{"hello":1}') })
+    await page.getByRole('alert').filter({ hasText: "That file isn't a makable session." }).waitFor()
+    await sessionInput.setInputFiles(sessionPath)
+    const confirm = page.getByRole('dialog', { name: 'Replace session' })
+    await confirm.getByText(`${exportedMessages} messages`).waitFor()
+    await shot('session-import.png')
+    await confirm.getByRole('button', { name: 'Cancel' }).click()
+    if (await page.locator('iframe[title="Portfolio preview"]').count()) throw new Error('cancel should leave the session alone')
+    await sessionInput.setInputFiles(sessionPath)
+    await confirm.getByRole('button', { name: 'Replace' }).click()
+    await assistantSays('Imported your session from')
+    await frame.getByText('static edited').first().waitFor({ timeout: 60000 })
+    console.log('✓ session: a broken file is refused; import asks, then brings back the chat and the site')
+    await page.getByRole('button', { name: 'Start over' }).click()
+    await page.getByRole('button', { name: 'I want a portfolio' }).waitFor()
+  }
 
   // sign out: back to a fresh guest chat
   await say('I want a portfolio')

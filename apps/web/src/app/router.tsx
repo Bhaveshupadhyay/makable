@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router'
+import { AboutPage } from '@/features/marketing'
 import { AppLayout } from './layouts/app-layout'
 import { AiSettingsPage, BuilderPage } from './lazy-pages'
 
@@ -16,6 +17,10 @@ export const router = createBrowserRouter([
             <BuilderPage />
           </Suspense>
         ),
+      },
+      {
+        path: 'about',
+        element: <AboutPage />,
       },
       {
         path: 'settings',

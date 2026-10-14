@@ -100,8 +100,10 @@ try {
   // 1. No makable model and no key yet: AI mode asks for a key up front and leads to Settings.
   await page.goto(BASE_URL)
   await page.getByRole('button', { name: 'Account menu' }).waitFor()
+  // A new chat is the landing page (prompt box, no Start over); a chat in progress gets reset.
   const startOver = page.getByRole('button', { name: 'Start over' })
-  if (await startOver.isEnabled()) await startOver.click()
+  await startOver.or(page.getByRole('button', { name: 'I want a portfolio' })).first().waitFor()
+  if (await startOver.isVisible()) await startOver.click()
   await page.getByRole('button', { name: 'I want a portfolio' }).click()
   await page.getByRole('button', { name: 'Terminal template' }).last().click()
   const frame = page.frameLocator('iframe[title="Portfolio preview"]')

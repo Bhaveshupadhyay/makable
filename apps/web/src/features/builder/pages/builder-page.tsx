@@ -1,18 +1,21 @@
 import { LoaderCircle } from 'lucide-react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
+import { Landing } from '@/features/marketing'
 import { useMediaQuery } from '@/shared/hooks/use-media-query'
 import { Button } from '@/shared/ui/button'
 import { HeaderActions } from '@/shared/ui/header-slot'
 import { BuilderPreview } from '../components/builder-preview'
 import { ChatPanel } from '../components/chat-panel'
 import { GithubSyncControl } from '../components/github-sync-control'
+import { HomePrompt } from '../components/home-prompt'
 import { PublishButton } from '../components/publish-button'
-import { SessionActions } from '../components/session-actions'
+// Export/Import are hidden for now; uncomment this and the <SessionActions> below to bring them back.
+// import { SessionActions } from '../components/session-actions'
 import { useBuilder } from '../hooks/use-builder'
 import { useGithubSync } from '../hooks/use-github-sync'
 import { usePublish } from '../hooks/use-publish'
 
-/** Chat first; once a template is picked, chat and live preview side by side. */
+/** A landing page with the prompt box; once the chat starts, the chat; once a template is picked, chat and live preview side by side. */
 export function BuilderPage() {
   const builder = useBuilder()
   const sync = useGithubSync(builder)
@@ -39,12 +42,21 @@ export function BuilderPage() {
     )
   }
 
+  // Before the first message the home page is a landing page around the prompt box.
+  if (!portfolio && builder.conversation.messages.length === 1) {
+    return (
+      <Landing>
+        <HomePrompt builder={builder} />
+      </Landing>
+    )
+  }
+
   // The app header is h-14; the workspace fills the rest of the viewport.
   return (
     <div className="h-[calc(100svh-3.5rem)]">
       <HeaderActions>
         {builder.sync.account && <GithubSyncControl sync={sync} />}
-        <SessionActions builder={builder} />
+        {/* <SessionActions builder={builder} /> */}
         {portfolio && <PublishButton builder={builder} />}
       </HeaderActions>
       {portfolio ? (
