@@ -1,0 +1,22 @@
+// The SPA on Cloudflare Workers: static files from apps/web/dist, and `/api/*` forwarded to the backend by
+// cloudflare/worker.ts. Deployed by .github/workflows/ci-cd.yml (a `[deploy]` commit on main, or a manual run).
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Must match the Worker's name in the Cloudflare dashboard, or Workers Builds refuses to deploy.
+  "name": "makable",
+  "main": "./cloudflare/worker.ts",
+  "compatibility_date": "2026-10-14",
+  // Makes `request.signal` fire when the browser aborts (Stop in the AI box), so the backend stops the model call.
+  "compatibility_flags": ["enable_request_signal"],
+  "assets": {
+    "directory": "./apps/web/dist",
+    // Paths with no file get index.html, so client routes like /builder load the app.
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    // The backend's origin. Only https is accepted (requests carry the session cookies).
+    "API_ORIGIN": "https://api.makable.tech"
+  },
+  "observability": { "enabled": true }
+}
