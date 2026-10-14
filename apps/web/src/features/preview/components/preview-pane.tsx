@@ -4,7 +4,7 @@ import { useElementSize } from '@/shared/hooks/use-element-size'
 import { cn } from '@/shared/lib/cn'
 import { Button } from '@/shared/ui/button'
 import type { usePreviewEngine } from '../hooks/use-preview-engine'
-import { fitFrame } from '../lib/fit-frame'
+import { fitFrame, frameScaleStyle } from '../lib/fit-frame'
 import { DEVICES, type Device } from './devices'
 import { PreviewError } from './preview-error'
 import { PreviewToolbar, type PreviewView } from './preview-toolbar'
@@ -63,10 +63,8 @@ export function PreviewPane({ preview: { iframeRef, state, refresh }, actions, b
         ref={stageRef}
         className={cn('relative flex flex-1 justify-center overflow-hidden bg-muted', fullscreen.active ? 'p-0' : 'p-3', showCode && 'hidden')}
       >
-        {/* The page is laid out at `width` and drawn at `scale`; this box is its drawn size plus
-            the border. CSS zoom, not a transform: the page then renders at the drawn size (its
-            devicePixelRatio drops by `scale`) instead of rendering big and being shrunk, which
-            made WebGL sites lag. */}
+        {/* The page is laid out at `width` and drawn at `scale` (`frameScaleStyle`: CSS zoom, or a
+            transform in Safari); this box is its drawn size plus the border. */}
         <div
           style={{ width: width * scale + 2 * FRAME_BORDER }}
           className="relative h-full overflow-hidden rounded-md border bg-white shadow-sm"
@@ -74,7 +72,7 @@ export function PreviewPane({ preview: { iframeRef, state, refresh }, actions, b
           <iframe
             ref={iframeRef}
             title="Portfolio preview"
-            style={{ width, height: `${100 / scale}%`, zoom: scale === 1 ? undefined : scale }}
+            style={{ width, height: `${100 / scale}%`, ...frameScaleStyle(scale, navigator.userAgent) }}
             className="block"
           />
           {overlay?.(scale)}
