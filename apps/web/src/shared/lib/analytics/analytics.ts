@@ -72,10 +72,14 @@ export type Analytics = ReturnType<typeof createAnalytics>
 
 export const analytics = createAnalytics()
 
-/** Makes a value safe to send: drops undefined and functions, caps strings, lists and nesting. */
+/**
+ * Makes a value safe to send: drops what doesn't apply (null, undefined, NaN) rather than sending empty values, drops
+ * functions, and caps strings, lists and nesting.
+ */
 export function clean(value: unknown, depth = 0): unknown {
-  if (value === null || typeof value === 'boolean') return value
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (value === null) return undefined
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
   if (typeof value === 'string') return value.length > MAX_STRING ? `${value.slice(0, MAX_STRING - 1)}…` : value
   if (value instanceof Date) return value.toISOString()
   if (depth >= MAX_DEPTH) return undefined

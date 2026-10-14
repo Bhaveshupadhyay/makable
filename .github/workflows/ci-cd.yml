@@ -52,7 +52,10 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
+      # Mixpanel's project token is public (it ships in the bundle), so it's a repository variable, not a secret.
       - run: bun run build
+        env:
+          VITE_MIXPANEL_TOKEN: ${{ vars.VITE_MIXPANEL_TOKEN }}
       # The wrangler pinned in package.json. The commit goes into the deployment's message, to tell deploys apart in
       # the dashboard (Worker → Deployments).
       - name: Deploy to Cloudflare

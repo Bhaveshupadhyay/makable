@@ -89,6 +89,8 @@ export type AnalyticsEvents = {
 
   // Account
   sign_in_started: { return_to: string }
+  /** Back from GitHub signed in, after `identify`. The SPA can't tell a first sign-in (sign-up) from a later one. */
+  sign_in_completed: { method: 'github' }
   signed_out: Record<string, never>
 
   // Publish

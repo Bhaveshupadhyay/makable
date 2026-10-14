@@ -70,11 +70,12 @@ test('setContext removes keys set to undefined; identify and reset reach provide
   expect(a.calls.slice(1)).toEqual([['identify', 'u1', { login: 'octocat' }], ['reset']])
 })
 
-test('clean caps strings and lists and drops what providers cannot take', () => {
+test('clean caps strings and lists and drops empty values and what providers cannot take', () => {
   const props = clean({
     long: 'x'.repeat(MAX_STRING + 10),
     list: Array.from({ length: 80 }, (_, i) => i),
     skip: undefined,
+    none: null,
     fn: () => 1,
     nan: Number.NaN,
     when: new Date('2026-01-02T03:04:05Z'),
@@ -83,8 +84,7 @@ test('clean caps strings and lists and drops what providers cannot take', () => 
   expect((props.long as string).length).toBe(MAX_STRING)
   expect((props.long as string).endsWith('…')).toBe(true)
   expect(props.list).toHaveLength(50)
-  expect('skip' in props || 'fn' in props).toBe(false)
-  expect(props.nan).toBeNull()
+  expect(['skip', 'none', 'fn', 'nan'].some((key) => key in props)).toBe(false)
   expect(props.when).toBe('2026-01-02T03:04:05.000Z')
   expect(props.deep).toEqual({ a: {} })
 })
