@@ -12,5 +12,8 @@
     "lint": "bun run --cwd apps/web lint",
     "typecheck": "bun run --cwd apps/web typecheck && bun --bun tsc -p tsconfig.cloudflare.json",
     "test": "bun run --cwd packages/shared test && bun run --cwd apps/web test && bun test ./cloudflare"
+  },
+  "devDependencies": {
+    "wrangler": "4.151.0"
   }
 }

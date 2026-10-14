@@ -1,7 +1,7 @@
 /**
  * Forwards the SPA's `/api/*` requests to the backend (`API_ORIGIN`, e.g. `https://api.makable.tech`). The SPA calls
  * the API on its own origin, because the session cookies are HttpOnly, SameSite=Lax and scoped to `/api/v1`, so on
- * Cloudflare Pages this Function stands in for the Vite dev proxy.
+ * Cloudflare this Worker (worker.ts) stands in for the Vite dev proxy.
  */
 
 // Hop-by-hop headers describe one connection, not the request (RFC 9110 §7.6.1), so neither direction forwards them.

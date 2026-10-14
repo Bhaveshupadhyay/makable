@@ -16,8 +16,7 @@
     "types": []
   },
   "include": [
-    "cloudflare",
-    "functions"
+    "cloudflare"
   ],
   "exclude": [
     "**/*.test.ts"
