@@ -33,12 +33,6 @@ export function ChatPanel({ builder, className }: { builder: Builder; className?
       </div>
 
       <div className={cn('flex-1 overflow-y-auto px-4 py-5', fresh && 'flex flex-col justify-center')}>
-        {fresh && (
-          <div className="mx-auto mb-8 max-w-2xl space-y-2 text-center">
-            <h1 className="text-3xl font-semibold tracking-tight">Build your portfolio by chatting</h1>
-            <p className="text-sm text-muted-foreground">Pick a template, answer a few questions, and edit anything right in the preview.</p>
-          </div>
-        )}
         <div className={cn('mx-auto max-w-2xl space-y-5', fresh && 'w-full')}>
           {messages.map((message) => (
             <ChatMessage key={message.id} message={message}>
