@@ -1,5 +1,5 @@
-import { Sparkles } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { MakableIcon } from '@/shared/ui/makable-logo'
 import type { ChatMessage as ChatMessageType } from '../lib/conversation'
 
 export function ChatMessage({ message, children }: { message: ChatMessageType; children?: ReactNode }) {
@@ -15,7 +15,7 @@ export function ChatMessage({ message, children }: { message: ChatMessageType; c
   return (
     <div className="flex gap-2.5">
       <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-muted">
-        <Sparkles className="size-3.5" />
+        <MakableIcon className="size-4" />
       </span>
       <div className="min-w-0 flex-1 space-y-3">
         <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{linkify(message.text)}</p>
