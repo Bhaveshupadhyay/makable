@@ -39,17 +39,23 @@ Environment variables (Production, and Preview if you use previews):
 
 | Variable | Value |
 | --- | --- |
-| `API_ORIGIN` | the API's origin, e.g. `https://api.makable.tech` (no path). Without it `/api/*` answers 500 `api_not_configured`. |
+| `API_ORIGIN` | the API's origin, e.g. `https://api.makable.tech` (no path). It must be https (requests carry the session cookies; plain http is allowed only for `localhost`). Otherwise `/api/*` answers 500 `api_not_configured`. |
 | `BUN_VERSION` | `1.4.2`, the version that writes `bun.lock` (the build image's default is older) |
 | `SKIP_DEPENDENCY_INSTALL` | `1`, so Pages doesn't run its own `npm install` (it can't read `workspace:*`); the build command installs with Bun |
+
+Under Settings → Runtime → Compatibility flags, add `enable_request_signal` (Production and Preview). With it, a
+request the browser aborts (Stop in the AI box) also aborts the request to the API, which then stops the model call.
 
 Then add your domain (e.g. `makable.tech`) under the project's Custom domains, and on the backend:
 
 - set `APP_URL=https://makable.tech` in its `.env` and restart it (cookies and the sign-in callback use it);
 - add `https://makable.tech/api/v1/auth/github/callback` to Supabase → Auth → URL Configuration → Redirect URLs.
 
-If the API's DNS record is also on Cloudflare, keep it **DNS only** (grey cloud): proxied, Cloudflare ends a request
-after 100 s, and an AI edit can take longer.
+If the API's DNS record is also on Cloudflare, keep it **DNS only** (grey cloud). Proxied, Cloudflare ends a request
+that waits more than 125 s for the origin (524; only Enterprise zones can raise it), and an AI edit can take up to
+~180 s (two model calls of up to 90 s). The trade-off: DNS only publishes the server's IP and skips Cloudflare's
+proxy protections (WAF, DDoS mitigation, caching) for the API; the API then relies on the server's own Nginx, TLS
+and firewall.
 
 `bun run typecheck` and `bun run test` cover the proxy too (`tsconfig.cloudflare.json`, `cloudflare/*.test.ts`).
 

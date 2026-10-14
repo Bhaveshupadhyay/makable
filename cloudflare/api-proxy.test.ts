@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { proxyToApi } from './api-proxy'
+import { parseApiOrigin, proxyToApi } from './api-proxy'
 
 const API = 'https://api.example.com'
 
@@ -8,7 +8,7 @@ function recordingFetch(response = new Response('{}', { status: 200 })) {
   const calls: { url: string; init: RequestInit }[] = []
   const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
     calls.push({ url: String(input), init: init ?? {} })
-    return response
+    return response.clone()
   }) as typeof fetch
   return { calls, fetchImpl }
 }
@@ -32,6 +32,39 @@ describe('proxyToApi', () => {
     expect(headers.get('x-forwarded-host')).toBe('makable.tech')
     expect(headers.get('x-forwarded-proto')).toBe('https')
     expect(headers.has('host')).toBe(false)
+  })
+
+  test('drops hop-by-hop headers, the ones Connection names, and Proxy-Authorization, both ways', async () => {
+    const upstream = new Response('{}', {
+      headers: [
+        ['connection', 'x-upstream-hop'],
+        ['x-upstream-hop', '1'],
+        ['keep-alive', 'timeout=5'],
+        ['x-request-id', 'r1'],
+      ],
+    })
+    const { calls, fetchImpl } = recordingFetch(upstream)
+    const request = new Request('https://makable.tech/api/v1/auth/me', {
+      headers: { connection: 'keep-alive, X-Client-Hop', 'x-client-hop': '1', 'proxy-authorization': 'Basic x', accept: 'application/json' },
+    })
+    const response = await proxyToApi(request, API, fetchImpl)
+    const sent = new Headers(calls[0]?.init.headers)
+    expect(sent.has('connection')).toBe(false)
+    expect(sent.has('x-client-hop')).toBe(false)
+    expect(sent.has('proxy-authorization')).toBe(false)
+    expect(sent.get('accept')).toBe('application/json')
+    expect(response.headers.has('x-upstream-hop')).toBe(false)
+    expect(response.headers.has('keep-alive')).toBe(false)
+    expect(response.headers.get('x-request-id')).toBe('r1')
+  })
+
+  test("passes the browser's abort signal on, so Stop cancels the backend request", async () => {
+    const { calls, fetchImpl } = recordingFetch()
+    const controller = new AbortController()
+    const request = new Request('https://makable.tech/api/v1/ai/edit', { method: 'POST', body: '{}', signal: controller.signal })
+    await proxyToApi(request, API, fetchImpl)
+    controller.abort()
+    expect(calls[0]?.init.signal?.aborted).toBe(true)
   })
 
   test('sends the body of a POST and none for a GET', async () => {
@@ -68,8 +101,23 @@ describe('proxyToApi', () => {
     expect(unreachable.status).toBe(502)
     expect(await unreachable.json()).toMatchObject({ success: false, error: { code: 'api_unreachable' } })
 
-    const missing = await proxyToApi(new Request('https://makable.tech/api/v1/auth/me'), undefined)
-    expect(missing.status).toBe(500)
-    expect(await missing.json()).toMatchObject({ success: false, error: { code: 'api_not_configured' } })
+    for (const origin of [undefined, 'not a url', 'http://api.example.com']) {
+      const { calls, fetchImpl } = recordingFetch()
+      const missing = await proxyToApi(new Request('https://makable.tech/api/v1/auth/me'), origin, fetchImpl)
+      expect(missing.status).toBe(500)
+      expect(await missing.json()).toMatchObject({ success: false, error: { code: 'api_not_configured' } })
+      expect(calls).toHaveLength(0)
+    }
+  })
+})
+
+describe('parseApiOrigin', () => {
+  test('accepts https, and http only for a local backend', () => {
+    expect(parseApiOrigin('https://api.makable.tech')?.host).toBe('api.makable.tech')
+    expect(parseApiOrigin('http://localhost:8787')?.host).toBe('localhost:8787')
+    expect(parseApiOrigin('http://127.0.0.1:8787')).not.toBeNull()
+    expect(parseApiOrigin('http://api.makable.tech')).toBeNull()
+    expect(parseApiOrigin('api.makable.tech')).toBeNull()
+    expect(parseApiOrigin('')).toBeNull()
   })
 })
