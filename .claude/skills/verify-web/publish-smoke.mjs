@@ -79,6 +79,45 @@ function answer(method, path, body, query) {
 
 const browser = await chromium.launch({ executablePath })
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+// Analytics must never carry a token or key. Mixpanel's requests are answered here (start the dev server with
+// VITE_ANALYTICS_DEBUG=true, and optionally a dummy VITE_MIXPANEL_TOKEN, to check them).
+const analyticsSeen = []
+const analyticsNames = new Set()
+// The console logger passes the event's properties as a separate argument, so read the arguments, not just the text.
+const consoleReads = []
+page.on('console', (m) => {
+  if (!m.text().startsWith('%c[analytics]')) return
+  consoleReads.push(
+    Promise.all(m.args().map((arg) => arg.jsonValue().catch(() => null))).then((args) => {
+      analyticsNames.add(args[2])
+      analyticsSeen.push(JSON.stringify(args))
+    }),
+  )
+})
+await page.route(/mixpanel\.com/, (route) => {
+  // Mixpanel sends `data` as JSON or base64 depending on the host: keep both readings.
+  const body = route.request().postData() ?? ''
+  const data = new URLSearchParams(body).get('data') ?? ''
+  let decoded = data
+  try {
+    JSON.parse(data)
+  } catch {
+    decoded = Buffer.from(data, 'base64').toString('utf8')
+  }
+  analyticsSeen.push(body, data, decoded)
+  return route.fulfill({ status: 200, body: '1' })
+})
+let analyticsChecked = false
+process.on('beforeExit', async () => {
+  if (analyticsChecked) return
+  analyticsChecked = true
+  await Promise.all(consoleReads)
+  const all = analyticsSeen.join('\n')
+  const leaked = [TOKEN].filter((s) => all.includes(s))
+  console.log('analytics events:', [...analyticsNames].join(', '))
+  console.log(leaked.length ? `✗ SECRET LEAKED to analytics: ${leaked}` : '✓ analytics: no token/key in any event')
+  if (leaked.length) process.exitCode = 1
+})
 const errors = []
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
 // The fake backend answers some requests with errors on purpose (409s, 404s); the browser logs those.

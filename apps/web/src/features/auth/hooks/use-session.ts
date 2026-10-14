@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { analytics } from '@/shared/lib/analytics'
 import { fetchSession, logout } from '../api/session'
 
 export const sessionQueryKey = ['auth', 'session'] as const
@@ -16,6 +17,9 @@ export function useLogout() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: logout,
-    onSuccess: () => queryClient.setQueryData(sessionQueryKey, null),
+    onSuccess: () => {
+      analytics.track('signed_out', {})
+      queryClient.setQueryData(sessionQueryKey, null)
+    },
   })
 }

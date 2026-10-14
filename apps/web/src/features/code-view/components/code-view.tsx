@@ -2,6 +2,7 @@ import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react'
 import { ChevronDown, ChevronRight, Files, LoaderCircle, Lock, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useMediaQuery } from '@/shared/hooks/use-media-query'
+import { analytics } from '@/shared/lib/analytics'
 import { cn } from '@/shared/lib/cn'
 import { buildFileTree, defaultFile, fileKind, type TreeNode } from '../lib/file-tree'
 
@@ -39,6 +40,7 @@ export function CodeView({ files, modified = NONE, projectName }: CodeViewProps)
   const shownTabs = current && !openTabs.includes(current) ? [...openTabs, current] : openTabs
 
   function open(path: string) {
+    if (path !== current) analytics.track('code_file_opened', { path, modified: modified.has(path) })
     setTabs(shownTabs.includes(path) ? shownTabs : [...shownTabs, path])
     setActive(path)
   }

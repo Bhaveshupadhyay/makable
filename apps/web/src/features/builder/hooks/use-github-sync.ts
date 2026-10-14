@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { workspaceStateSchema } from '@makable/shared'
+import { analytics } from '@/shared/lib/analytics'
 import { ApiError } from '@/shared/lib/api-client'
 import { getLatestState, getPart, getState, type SavedState, saveBatch, saveBody } from '../api/workspace'
 import { WORKSPACE_REPO } from '../lib/conversation'
@@ -116,6 +117,10 @@ function createGithubSync(initial: Context, onStatus: (status: SyncStatus) => vo
   const restored = new Set<string>()
 
   const set = (next: SyncStatus) => {
+    // Problems only, once each: saves happen every few minutes and would drown everything else.
+    if ((next.state === 'error' || next.state === 'blocked' || next.state === 'conflict') && next.state !== status.state) {
+      analytics.track('github_sync_problem', { state: next.state, message: 'message' in next ? next.message : null })
+    }
     status = next
     onStatus(next)
   }
@@ -262,9 +267,15 @@ function createGithubSync(initial: Context, onStatus: (status: SyncStatus) => vo
     const { remoteSha } = status
     const projectId = useBuilderStore.getState().projectId
     try {
-      if (choice === 'keep') return await save('manual', remoteSha ?? (await getState(projectId))?.sha ?? null)
+      if (choice === 'keep') {
+        await save('manual', remoteSha ?? (await getState(projectId))?.sha ?? null)
+        // Counted only once it worked: save reports a failure through the status, not by throwing.
+        if ((status as SyncStatus).state === 'saved') analytics.track('github_sync_resolved', { choice: 'keep-local' })
+        return
+      }
       const found = await getState(projectId)
-      if (!found || !(await load(found, () => true))) set({ state: 'error', message: "Couldn't load the version on GitHub." })
+      if (found && (await load(found, () => true))) analytics.track('github_sync_resolved', { choice: 'load-remote' })
+      else set({ state: 'error', message: "Couldn't load the version on GitHub." })
     } catch (e) {
       failed(e)
     }

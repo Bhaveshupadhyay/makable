@@ -1,4 +1,5 @@
 import { PencilLine, Redo2, Undo2 } from 'lucide-react'
+import { analytics } from '@/shared/lib/analytics'
 import { cn } from '@/shared/lib/cn'
 import { Button } from '@/shared/ui/button'
 import type { VisualEdit } from '../hooks/use-visual-edit'
@@ -7,10 +8,16 @@ import type { VisualEdit } from '../hooks/use-visual-edit'
 export function VisualEditControls({ edit, undoOnly = false }: { edit: VisualEdit; undoOnly?: boolean }) {
   return (
     <>
-      <Button variant="ghost" size="icon" aria-label="Undo" title="Undo (⌘Z)" disabled={!edit.canUndo} onClick={edit.undo}>
+      <Button variant="ghost" size="icon" aria-label="Undo" title="Undo (⌘Z)" disabled={!edit.canUndo} onClick={() => {
+          analytics.track('edit_undone', { source: 'button' })
+          edit.undo()
+        }}>
         <Undo2 />
       </Button>
-      <Button variant="ghost" size="icon" aria-label="Redo" title="Redo (⇧⌘Z)" disabled={!edit.canRedo} onClick={edit.redo}>
+      <Button variant="ghost" size="icon" aria-label="Redo" title="Redo (⇧⌘Z)" disabled={!edit.canRedo} onClick={() => {
+          analytics.track('edit_redone', { source: 'button' })
+          edit.redo()
+        }}>
         <Redo2 />
       </Button>
       {!undoOnly && (

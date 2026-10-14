@@ -3,6 +3,8 @@ import type { AiHistoryTurn } from '@/features/ai-edit'
 import type { SiteDraft } from '@/features/visual-edit'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { analytics } from '@/shared/lib/analytics'
+import { chatAnalytics } from './lib/chat-analytics'
 import { type ChatContext, type ChatEvent, type Conversation, initialConversation, reduceConversation } from './lib/conversation'
 import type { Published } from './lib/publish-flow'
 import type { SessionState } from './lib/session-file'
@@ -70,7 +72,7 @@ type Persisted = Pick<
 
 export const useBuilderStore = create<BuilderState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       login: null,
       projectId: crypto.randomUUID(),
       conversation: initialConversation(),
@@ -84,14 +86,22 @@ export const useBuilderStore = create<BuilderState>()(
           if (!turns?.some((turn) => turn.id === id)) return {}
           return { aiHistory: { ...aiHistory, [template]: turns.map((turn) => (turn.id === id ? { ...turn, reply } : turn)) } }
         }),
-      dispatch: (event, ctx) => set(({ conversation }) => ({ conversation: reduceConversation(conversation, event, ctx) })),
+      dispatch: (event, ctx) => {
+        const before = get().conversation
+        const after = reduceConversation(before, event, ctx)
+        set({ conversation: after })
+        analytics.trackEach(chatAnalytics(event, before, after, ctx))
+      },
       setDraft: ({ portfolio, files }) =>
         set(({ conversation, fileEdits }) => ({
           conversation: { ...conversation, portfolio },
           fileEdits: { ...fileEdits, [portfolio.template]: files },
         })),
       aiMode: false,
-      setAiMode: (aiMode) => set({ aiMode }),
+      setAiMode: (aiMode) => {
+        if (aiMode !== get().aiMode) analytics.track('ai_mode_changed', { enabled: aiMode })
+        set({ aiMode })
+      },
       syncEnabled: true,
       setSyncEnabled: (syncEnabled) => set({ syncEnabled }),
       synced: null,

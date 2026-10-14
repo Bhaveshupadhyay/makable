@@ -3,5 +3,9 @@
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
-  ]
+  ],
+  // Read by `bun test` (it doesn't follow references) so tests can import code that uses `@/`. Builds use tsconfig.app.json.
+  "compilerOptions": {
+    "paths": { "@/*": ["./src/*"] }
+  }
 }

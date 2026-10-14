@@ -1,11 +1,12 @@
 import type { TemplateEntry } from '@makable/shared'
 import { LoaderCircle, Sparkles } from 'lucide-react'
-import { type ReactNode, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { AiEditHint, AiEditPopover, useAiEdit, useAiEditPending } from '@/features/ai-edit'
 import { CodeView } from '@/features/code-view'
 import { buildProjectFiles, PreviewPane, type PreviewView, usePreviewEngine } from '@/features/preview'
 import { type TemplateFiles, useTemplate } from '@/features/templates'
 import { EDIT_SHIM, type SiteDraft, useVisualEdit, VisualEditBanner, VisualEditControls } from '@/features/visual-edit'
+import { analytics } from '@/shared/lib/analytics'
 import { Button } from '@/shared/ui/button'
 import type { Builder } from '../hooks/use-builder'
 import { AI_EDIT } from '../lib/conversation'
@@ -54,6 +55,10 @@ function LoadedPreview({ template, files: templateFiles, draft, onChange, builde
     [templateFiles, template, portfolio, fileEdits],
   )
   const preview = usePreviewEngine(files, { injectedScript: EDIT_SHIM })
+  const previewError = preview.state.status === 'error' ? preview.state.error : null
+  useEffect(() => {
+    if (previewError) analytics.track('preview_error', { message: previewError.message, template_id: template.id })
+  }, [previewError, template.id])
   // No other edits while the AI works: its answer is for the site as it was sent.
   const aiPending = useAiEditPending()
   const edit = useVisualEdit({
@@ -70,7 +75,7 @@ function LoadedPreview({ template, files: templateFiles, draft, onChange, builde
     draft,
     onApply: edit.applyDraft,
     onUndo: edit.undo,
-    previewError: preview.state.status === 'error' ? preview.state.error : null,
+    previewError,
     onSent: builder.logAiRequest,
     history: builder.aiHistory,
     onRecord: builder.recordAiTurn,

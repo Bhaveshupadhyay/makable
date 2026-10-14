@@ -45,6 +45,10 @@ and links to Settings), adds a refused key, then a good one, chooses two models,
 the key is never on the page or in localStorage, picks a model in the AI box and checks it's sent, reloads, and checks a
 refused key falls back to makable default. Screenshots: `ai-needs-key.png`, `ai-settings-choose.png`, `ai-settings.png`, `ai-model-menu.png`.
 
+**Analytics:** start the dev server with `VITE_ANALYTICS_DEBUG=true VITE_MIXPANEL_TOKEN=smoke-test-token` to have
+`publish-smoke.mjs` and `ai-models-smoke.mjs` list the analytics events they saw and fail if a pasted token or API key
+appears in any of them. Mixpanel's requests are answered by Playwright, so nothing reaches Mixpanel.
+
 When a feature adds a new flow, extend `smoke.mjs` here (or `publish-smoke.mjs` for publishing), rather than writing a
 one-off script.
 Notes: on macOS, Home/End scroll the page instead of moving the caret, even in an editable. Use `Meta+ArrowLeft/Right` to move the caret in tests. The chat's GitHub lookup calls the public GitHub API (60 req/h per IP), and the preview needs network access to the CodeSandbox bundler, the jsDelivr CDN (Tailwind and the Monaco editor) and the published template catalog on GitHub Pages.
