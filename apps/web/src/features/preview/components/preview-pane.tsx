@@ -71,7 +71,7 @@ export function PreviewPane({ preview: { iframeRef, state, refresh }, actions, b
         >
           <iframe
             ref={iframeRef}
-            title="Portfolio preview"
+            title="Site preview"
             style={{ width, height: `${100 / scale}%`, ...frameScaleStyle(scale, navigator.userAgent) }}
             className="block"
           />

@@ -1,5 +1,5 @@
 export { VisualEditBanner } from './components/visual-edit-banner'
 export { VisualEditControls } from './components/visual-edit-controls'
-export { type SiteDraft, useVisualEdit, type VisualEdit } from './hooks/use-visual-edit'
+export { useVisualEdit, type VisualEdit } from './hooks/use-visual-edit'
 export type { ElementRect } from './protocol'
 export { EDIT_SHIM } from './shim'

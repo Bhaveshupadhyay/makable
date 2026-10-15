@@ -37,5 +37,7 @@ export function usePreviewEngine(files: ProjectFiles, options?: PreviewOptions) 
     iframeRef,
     state,
     refresh: () => engineRef.current?.refresh(),
+    /** The preview's state now and as it changes (to see how a change went). */
+    subscribe: (listener: (state: PreviewState) => void) => engineRef.current?.subscribe(listener) ?? (() => {}),
   }
 }

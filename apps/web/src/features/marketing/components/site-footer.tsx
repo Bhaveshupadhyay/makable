@@ -1,7 +1,7 @@
 import { Link } from 'react-router'
 import { GithubIcon } from '@/shared/ui/github-icon'
 import { MakableLogo } from '@/shared/ui/makable-logo'
-import { ISSUES_URL, REPO_URL, TEMPLATES_REPO_URL } from '../lib/links'
+import { ISSUES_URL, REPO_URL } from '../lib/links'
 import { FooterLogo } from './footer-logo'
 
 const COLUMNS = [
@@ -17,7 +17,6 @@ const COLUMNS = [
     title: 'Open source',
     links: [
       { label: 'GitHub', href: REPO_URL },
-      { label: 'Templates', href: TEMPLATES_REPO_URL },
       { label: 'Report an issue', href: ISSUES_URL },
     ],
   },
@@ -33,7 +32,7 @@ export function SiteFooter() {
         <div className="space-y-4">
           <MakableLogo iconClassName="size-7" textClassName="text-lg font-bold tracking-tight" />
           <p className="max-w-xs text-sm text-muted-foreground">
-            An open-source AI website builder. Chat your way to a portfolio and publish it from your own GitHub.
+            An open-source AI website builder. Chat your way to a website and publish it from your own GitHub.
           </p>
           <a
             href={REPO_URL}

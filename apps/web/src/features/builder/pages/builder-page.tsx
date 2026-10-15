@@ -1,78 +1,139 @@
-import { LoaderCircle } from 'lucide-react'
-import { Group, Panel, Separator } from 'react-resizable-panels'
+import { ArrowUpRight, LoaderCircle } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { useThread } from '@/features/ai-edit'
+import { useSession } from '@/features/auth'
 import { Landing } from '@/features/marketing'
-import { useMediaQuery } from '@/shared/hooks/use-media-query'
+import { useSiteStore } from '@/features/site'
 import { Button } from '@/shared/ui/button'
-import { HeaderActions } from '@/shared/ui/header-slot'
-import { BuilderPreview } from '../components/builder-preview'
-import { ChatPanel } from '../components/chat-panel'
-import { GithubSyncControl } from '../components/github-sync-control'
+import { CreateView } from '../components/create-view'
 import { HomePrompt } from '../components/home-prompt'
-import { PublishButton } from '../components/publish-button'
-// Export/Import are hidden for now; uncomment this and the <SessionActions> below to bring them back.
-// import { SessionActions } from '../components/session-actions'
-import { useBuilder } from '../hooks/use-builder'
-import { useGithubSync } from '../hooks/use-github-sync'
-import { usePublish } from '../hooks/use-publish'
+import { useSites } from '../hooks/use-sites'
+import { Workspace } from '../components/workspace'
+import { type CreateSite, useCreateSite } from '../hooks/use-create-site'
+import { takePendingPrompt } from '../lib/pending-prompt'
+import { useSiteChat } from '../store'
 
-/** A landing page with the prompt box; once the chat starts, the chat; once a template is picked, chat and live preview side by side. */
+/**
+ * The home page. Guests get the landing page, whose prompt box asks them to sign in. Signed in: the landing page
+ * until a site is started, then the chat while it's built, then the chat beside the live preview.
+ */
 export function BuilderPage() {
-  const builder = useBuilder()
-  const sync = useGithubSync(builder)
-  usePublish(builder, sync)
-  const wide = useMediaQuery('(min-width: 768px)')
-  const { portfolio } = builder.conversation
+  const session = useSession()
+  const login = useSiteStore((s) => s.login)
+  const claim = useSiteStore((s) => s.claim)
+  const reset = useSiteStore((s) => s.reset)
+  // Who is building: a GitHub login, null for a guest, or undefined while the session loads.
+  const user = session.data ?? null
+  const owner = session.isPending ? undefined : (user?.login ?? null)
 
-  if (builder.status === 'loading') {
-    return (
-      <div className="flex h-[calc(100svh-3.5rem)] items-center justify-center">
-        <LoaderCircle className="size-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
+  // Only a confirmed session moves the site, so a server error can't hide an account's work. Another account on
+  // this browser starts fresh; what a guest had (nothing but a project id) is theirs once they sign in.
+  useEffect(() => {
+    if (!session.isSuccess || login === owner) return
+    if (login === null && owner) claim(owner)
+    else reset(owner ?? null)
+  }, [session.isSuccess, login, owner, claim, reset])
 
-  if (builder.status === 'offline') {
+  if (owner === undefined || (user && login !== owner)) return <Spinner />
+
+  if (session.isError && login !== null) {
     return (
       <div className="flex h-[calc(100svh-3.5rem)] flex-col items-center justify-center gap-3 p-4 text-center">
         <p className="text-sm text-muted-foreground">Couldn't reach the server.</p>
-        <Button variant="outline" onClick={builder.retry}>
+        <Button variant="outline" onClick={() => void session.refetch()}>
           Try again
         </Button>
       </div>
     )
   }
 
-  // Before the first message the home page is a landing page around the prompt box. Guests always get it:
-  // building needs GitHub, so the prompt box asks them to sign in.
-  if (!builder.signedIn || (!portfolio && builder.conversation.messages.length === 1)) {
+  if (!user) {
     return (
       <Landing>
-        <HomePrompt builder={builder} />
+        <HomePrompt signedIn={false} onStart={() => {}} />
       </Landing>
     )
   }
+  return <Studio login={user.login} />
+}
 
-  // The app header is h-14; the workspace fills the rest of the viewport.
+/** A signed-in user's builder: the site they're on, at whatever stage it is. */
+function Studio({ login }: { login: string }) {
+  const projectId = useSiteStore((s) => s.projectId)
+  const site = useSiteStore((s) => s.site)
+  const autoOpen = useSiteStore((s) => s.autoOpen)
+  const creation = useCreateSite()
+  const thread = useThread(projectId)
+  const chat = useSiteChat(projectId)
+  const sites = useSites()
+  const creating = !!creation.creating
+
+  // A browser with nothing for this account yet (a new device, cleared data): open their newest site.
+  useEffect(() => {
+    if (!autoOpen || site || creating || !sites.isSuccess) return
+    const newest = sites.data[0]
+    if (newest) useSiteStore.getState().open(newest)
+    else useSiteStore.setState({ autoOpen: false })
+  }, [autoOpen, site, creating, sites.isSuccess, sites.data])
+
+  // What a guest asked for on the landing page before signing in: a new site, once they're back.
+  const pendingChecked = useRef(false)
+  useEffect(() => {
+    if (pendingChecked.current) return
+    pendingChecked.current = true
+    const prompt = takePendingPrompt()
+    if (!prompt) return
+    if (useSiteStore.getState().site) useSiteStore.getState().newSite()
+    else useSiteStore.setState({ autoOpen: false })
+    creation.start(prompt)
+  }, [creation])
+
+  if (site?.repoName) return <Workspace login={login} />
+  const createRun = thread.data?.run?.mode === 'create'
+  if (creating || createRun || chat.messages.length > 0 || (thread.data?.turns.length ?? 0) > 0) {
+    return (
+      <div className="h-[calc(100svh-3.5rem)]">
+        <CreateView creation={creation} />
+      </div>
+    )
+  }
+  if (autoOpen && sites.isPending) return <Spinner />
   return (
-    <div className="h-[calc(100svh-3.5rem)]">
-      <HeaderActions>
-        {builder.sync.account && <GithubSyncControl sync={sync} />}
-        {/* <SessionActions builder={builder} /> */}
-        {portfolio && <PublishButton builder={builder} />}
-      </HeaderActions>
-      {portfolio ? (
-        <Group orientation={wide ? 'horizontal' : 'vertical'}>
-          <Panel defaultSize={wide ? '34' : '45'} minSize={wide ? '320px' : '25'}>
-            <ChatPanel builder={builder} />
-          </Panel>
-          <Separator className="bg-border transition-colors hover:bg-ring data-[separator=active]:bg-ring aria-[orientation=horizontal]:h-px aria-[orientation=vertical]:w-px" />
-          <Panel minSize={wide ? '360px' : '25'}>
-            <BuilderPreview draft={{ portfolio, files: builder.fileEdits }} onChange={builder.setDraft} builder={builder} />
-          </Panel>
-        </Group>
-      ) : (
-        <ChatPanel builder={builder} />
-      )}
+    <Landing>
+      <HomePrompt signedIn onStart={creation.start} busy={creating} />
+      <RecentSites creation={creation} />
+    </Landing>
+  )
+}
+
+/** Below the prompt: the user's latest sites, to go back to one. */
+function RecentSites({ creation }: { creation: CreateSite }) {
+  const { data: sites = [] } = useSites()
+  if (sites.length === 0 || creation.creating) return null
+  return (
+    <div className="mt-8 space-y-2">
+      <p className="text-xs text-muted-foreground">Or open one of your sites</p>
+      <div className="flex flex-wrap justify-center gap-2">
+        {sites.slice(0, 4).map((site) => (
+          <button
+            key={site.projectId}
+            type="button"
+            onClick={() => useSiteStore.getState().open(site)}
+            className="inline-flex items-center gap-1 rounded-full border bg-background/70 px-3 py-1.5 text-sm shadow-xs backdrop-blur transition-colors hover:bg-accent"
+          >
+            {site.name}
+            <ArrowUpRight className="size-3.5" />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function Spinner() {
+  return (
+    <div className="flex h-[calc(100svh-3.5rem)] items-center justify-center">
+      <LoaderCircle className="size-6 animate-spin text-muted-foreground" />
     </div>
   )
 }

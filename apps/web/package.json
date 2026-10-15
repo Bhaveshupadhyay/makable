@@ -12,6 +12,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@babel/parser": "^7.29.0",
     "@codesandbox/sandpack-client": "^2.19.8",
     "@makable/shared": "workspace:*",
     "@monaco-editor/react": "^4.7.0",

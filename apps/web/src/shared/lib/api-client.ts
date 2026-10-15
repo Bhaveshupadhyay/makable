@@ -66,16 +66,34 @@ function send(path: string, init?: RequestInit): Promise<Response> {
  * refresh itself fails for any reason but a 401, that error is thrown instead of the original 401.
  */
 export async function backendFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  let res = await send(path, init)
-  if (res.status === 401 && path !== REFRESH_PATH && (await refreshSession())) {
-    res = await send(path, init)
-  }
+  const res = await sendWithRefresh(path, init)
   if (res.status === 204) return undefined as T
 
   const body = (await res.json().catch(() => null)) as Envelope<T> | null
   if (res.ok && body?.success) return body.data
+  throw toApiError(res, body, path, init)
+}
+
+/**
+ * Like `backendFetch`, for an endpoint that streams its answer (e.g. JSON lines): resolves with the response once it
+ * starts, so the caller reads the body as it comes. A refused request throws `ApiError` from its error envelope.
+ */
+export async function backendStream(path: string, init?: RequestInit): Promise<Response> {
+  const res = await sendWithRefresh(path, init)
+  if (res.ok && res.body) return res
+  const body = (await res.json().catch(() => null)) as Envelope<unknown> | null
+  throw toApiError(res, body, path, init)
+}
+
+async function sendWithRefresh(path: string, init?: RequestInit): Promise<Response> {
+  const res = await send(path, init)
+  if (res.status === 401 && path !== REFRESH_PATH && (await refreshSession())) return send(path, init)
+  return res
+}
+
+function toApiError(res: Response, body: Envelope<unknown> | null, path: string, init?: RequestInit): ApiError {
   const error = body && !body.success ? body.error : undefined
-  throw new ApiError(
+  return new ApiError(
     res.status,
     error?.message ?? `${init?.method ?? 'GET'} ${BACKEND}${path} failed with ${res.status}`,
     error?.code,

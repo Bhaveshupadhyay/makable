@@ -2,26 +2,32 @@
 // PreviewOptions.injectedScript) and run there as plain JS, never bundled.
 // Message shapes mirror ../protocol.ts.
 //
+// The preview's copy of the site is tagged: every element written in the code has
+// `data-src="<path>:<line>:<column>"` (see tagSources in the site feature).
+//
 // Modes (set by the host):
-// - `text`: clicking an element with `data-content="<path>"` opens an editor
-//   overlaid on it. The app's own DOM is never edited directly: React owns
-//   those nodes. The new text goes to the host, which updates the content
-//   file, and the app re-renders.
-// - `select`: clicking any element selects it for an AI edit. The shim sends
-//   the host a description of it (see describe()) and its position, and keeps
-//   the position current on scroll, resize and layout changes, so the host can
-//   anchor its prompt box to it. Overlays mark the hovered and selected
-//   elements without touching the app's DOM.
-// While locked (an AI request is pending), clicks and Escape do nothing and
-// nothing is hovered, but the selection stays and its position keeps updating.
+// - `text`: clicking an element whose content is only text opens an editor overlaid
+//   on it. The app's own DOM is never edited directly: React owns those nodes. The
+//   new text goes to the host with the element's `data-src`; the host changes the
+//   source there, and the app re-renders.
+// - `select`: clicking any element selects it for an AI edit. The shim sends the
+//   host a description of it (see describe()) and its position, and keeps the
+//   position current on scroll, resize and layout changes, so the host can anchor
+//   its prompt box to it. Overlays mark the hovered and selected elements without
+//   touching the app's DOM.
+// While locked (an AI request is pending), clicks and Escape do nothing and nothing
+// is hovered, but the selection stays and its position keeps updating.
 ;(() => {
   if (window.__makableEditShim) return
   window.__makableEditShim = true
 
   const HOST = 'makable-host'
   const SHIM = 'makable-shim'
-  const ATTR = 'data-makable-edit'
+  const SRC = 'data-src'
   const SELECT_ATTR = 'data-makable-select'
+  const TEXT_ATTR = 'data-makable-text'
+  // Loaded only when a picture of the selection is asked for (models that read images).
+  const SCREENSHOT_LIB = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/+esm'
   /** @type {'off' | 'text' | 'select'} */
   let mode = 'off'
   let locked = false
@@ -32,19 +38,19 @@
 
   const style = document.createElement('style')
   style.textContent = `
-    html[${ATTR}] [data-content] { cursor: text; }
-    html[${ATTR}] [data-content]:hover { outline: 2px dashed #3b82f6; outline-offset: 2px; }
-    html[${ATTR}] a { cursor: default; }
     html[${SELECT_ATTR}], html[${SELECT_ATTR}] * { cursor: crosshair !important; }
+    html[${TEXT_ATTR}] a { cursor: default; }
     .makable-box {
       position: fixed; z-index: 2147483646; pointer-events: none; box-sizing: border-box;
       border: 2px dashed #8b5cf6; border-radius: 3px; display: none;
     }
     .makable-box[data-selected] { border-style: solid; background: rgba(139, 92, 246, 0.08); }
+    .makable-box[data-text] { border-color: #3b82f6; }
     .makable-box span {
       position: absolute; left: -2px; bottom: 100%; padding: 1px 6px; border-radius: 3px 3px 0 0;
       background: #8b5cf6; color: #fff; font: 600 11px/16px ui-sans-serif, system-ui, sans-serif; white-space: nowrap;
     }
+    .makable-box[data-text] span { display: none; }
     .makable-editor {
       position: absolute; z-index: 2147483647; box-sizing: border-box; margin: 0;
       outline: 2px solid #3b82f6; outline-offset: 2px; border-radius: 2px;
@@ -67,32 +73,31 @@
 
   function setMode(value) {
     mode = value === 'text' || value === 'select' ? value : 'off'
-    document.documentElement.toggleAttribute(ATTR, mode === 'text')
+    document.documentElement.toggleAttribute(TEXT_ATTR, mode === 'text')
     document.documentElement.toggleAttribute(SELECT_ATTR, mode === 'select')
+    hoverBox.show(null)
     if (mode !== 'text') finish(false)
-    if (mode !== 'select') {
-      hoverBox.show(null)
-      select(null, false)
-    }
+    if (mode !== 'select') select(null, false)
   }
 
-  // --- select mode -------------------------------------------------------
+  // --- overlays ----------------------------------------------------------
 
   /** An overlay box that follows an element. */
-  function makeBox(isSelected) {
+  function makeBox(kind) {
     const box = document.createElement('div')
     box.className = 'makable-box'
-    box.toggleAttribute('data-selected', isSelected)
-    box.appendChild(document.createElement('span'))
     let el = null
+    box.appendChild(document.createElement('span'))
     const place = () => {
       if (!el || !el.isConnected) return (box.style.display = 'none')
       const r = el.getBoundingClientRect()
       Object.assign(box.style, { display: 'block', left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` })
     }
     return {
-      show(target) {
+      show(target, as = kind) {
         el = target
+        box.toggleAttribute('data-selected', as === 'selected')
+        box.toggleAttribute('data-text', as === 'text')
         if (target) {
           if (!box.isConnected) document.body.appendChild(box)
           box.firstChild.textContent = label(target)
@@ -102,8 +107,9 @@
       place,
     }
   }
-  const hoverBox = makeBox(false)
-  const selectedBox = makeBox(true)
+  const hoverBox = makeBox('hover')
+  const selectedBox = makeBox('selected')
+
   /** The selected element's box in this window's viewport, or null when it's gone. */
   function rectOf(el) {
     if (!el || !el.isConnected) return null
@@ -130,9 +136,11 @@
   }
   window.addEventListener('scroll', reposition, true)
   window.addEventListener('resize', reposition)
-  // Content edits re-render the page and can move the selection without a scroll.
+  // Edits re-render the page and can move the selection without a scroll.
   const resizeObserver = new ResizeObserver(reposition)
   new MutationObserver(reposition).observe(document.body, { childList: true, subtree: true, characterData: true })
+
+  // --- describing elements -----------------------------------------------
 
   const LANDMARK = 'section, header, footer, nav, aside'
   const clip = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text)
@@ -148,14 +156,20 @@
     }
   }
 
+  /** Where the element is written in the code, from the nearest `data-src`. */
+  function sourceOf(el) {
+    const value = el.closest(`[${SRC}]`)?.getAttribute(SRC)
+    const match = value && /^(.+):(\d+):(\d+)$/.exec(value)
+    return match ? { path: match[1].slice(0, 300), line: Number(match[2]), column: Number(match[3]) } : null
+  }
+
   function label(el) {
     const section = sectionOf(el)
     const name = section ? section.heading || section.id || section.tag : null
-    const path = el.closest('[data-content]')?.getAttribute('data-content')
-    return [name, path || el.tagName.toLowerCase()].filter(Boolean).join(' › ')
+    return [name, el.tagName.toLowerCase()].filter(Boolean).join(' › ')
   }
 
-  /** `main > section#skills > ul > li:nth-of-type(3)`: enough to find the element in the source. */
+  /** `main > section#menu > ul > li:nth-of-type(3)`: enough to find the element in the source. */
   function selectorOf(el) {
     const parts = []
     for (let node = el; node && node !== document.body && parts.length < 8; node = node.parentElement) {
@@ -171,17 +185,27 @@
     return clip(parts.join(' > '), 500)
   }
 
+  /** The element's HTML as the site's code has it: without the preview's tags. */
+  function htmlOf(el) {
+    const copy = el.cloneNode(true)
+    copy.removeAttribute(SRC)
+    copy.querySelectorAll(`[${SRC}]`).forEach((node) => node.removeAttribute(SRC))
+    return clip(copy.outerHTML, 4000)
+  }
+
   /** What the AI needs to know about the clicked element. Mirrors aiEditTargetSchema in @makable/shared. */
   function describe(el) {
     return {
       tag: el.tagName.toLowerCase().slice(0, 32),
       text: clip(normalize(el.textContent || ''), 300),
-      contentPath: el.closest('[data-content]')?.getAttribute('data-content')?.slice(0, 100) ?? null,
+      source: sourceOf(el),
       section: sectionOf(el),
       selector: selectorOf(el),
-      html: clip(el.outerHTML, 4000),
+      html: htmlOf(el),
     }
   }
+
+  // --- select mode -------------------------------------------------------
 
   function select(el, notify = true) {
     if (selected) resizeObserver.unobserve(selected)
@@ -192,17 +216,15 @@
     if (notify) post({ type: 'select', target: el ? describe(el) : null, rect: rectOf(el) })
   }
 
-  document.addEventListener('mouseover', (e) => {
-    if (mode !== 'select' || locked || !(e.target instanceof Element)) return
-    hoverBox.show(e.target === document.body || e.target === document.documentElement ? null : e.target)
-  })
-  // Leaving the frame (e.g. onto the host's prompt box) fires mouseout with no related target.
-  document.addEventListener('mouseout', (e) => {
-    if (!e.relatedTarget) hoverBox.show(null)
-  })
-  document.addEventListener('keydown', (e) => {
-    if (mode === 'select' && !locked && e.key === 'Escape' && selected) select(null)
-  })
+  // --- text mode ---------------------------------------------------------
+
+  /** The element to edit for a click on `el`: one written in the code whose content is only text. */
+  function editableOf(el) {
+    const target = el.closest(`[${SRC}]`)
+    if (!(target instanceof HTMLElement) || !target.firstChild) return null
+    const onlyText = [...target.childNodes].every((node) => node.nodeType === Node.TEXT_NODE || node.nodeType === Node.COMMENT_NODE)
+    return onlyText && normalize(target.textContent || '') ? target : null
+  }
 
   function start(target) {
     finish(true)
@@ -213,7 +235,7 @@
     editor.contentEditable = 'plaintext-only'
     if (editor.contentEditable !== 'plaintext-only') editor.contentEditable = 'true'
     editor.setAttribute('role', 'textbox')
-    editor.setAttribute('aria-label', `Edit ${target.getAttribute('data-content')}`)
+    editor.setAttribute('aria-label', 'Edit text')
     for (const prop of [
       'font', 'letterSpacing', 'textTransform', 'textAlign', 'lineHeight', 'color',
       'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
@@ -231,6 +253,7 @@
     editor.textContent = original
     editing = { target, editor, original, visibility: target.style.visibility }
     target.style.visibility = 'hidden'
+    hoverBox.show(null)
     document.body.appendChild(editor)
 
     editor.focus()
@@ -259,8 +282,46 @@
     const value = normalize(editor.textContent || '')
     editor.remove()
     target.style.visibility = visibility
-    if (save && value !== original) post({ type: 'edit', path: target.getAttribute('data-content'), value })
+    if (save && value && value !== original) post({ type: 'edit', src: target.getAttribute(SRC), oldText: original, value })
   }
+
+  // --- pictures ----------------------------------------------------------
+
+  let screenshotLib = null
+  // A native import at run time: the preview's bundler would otherwise try to bundle the URL.
+  const importUrl = new Function('url', 'return import(url)')
+
+  async function capture(id) {
+    let dataUrl = null
+    try {
+      if (selected && selected.isConnected) {
+        screenshotLib ??= importUrl(SCREENSHOT_LIB)
+        const { domToJpeg } = await screenshotLib
+        const r = selected.getBoundingClientRect()
+        // Big enough to read, small enough to send: the longer side at most 1024 px.
+        const scale = Math.min(1, 1024 / Math.max(r.width, r.height, 1))
+        dataUrl = await domToJpeg(selected, { scale, quality: 0.8, backgroundColor: backgroundOf(selected) })
+      }
+    } catch {
+      dataUrl = null
+    }
+    post({ type: 'capture', id, dataUrl })
+  }
+
+  // --- events ------------------------------------------------------------
+
+  document.addEventListener('mouseover', (e) => {
+    if (locked || !(e.target instanceof Element)) return
+    if (mode === 'select') hoverBox.show(e.target === document.body || e.target === document.documentElement ? null : e.target, 'hover')
+    else if (mode === 'text' && !editing) hoverBox.show(editableOf(e.target), 'text')
+  })
+  // Leaving the frame (e.g. onto the host's prompt box) fires mouseout with no related target.
+  document.addEventListener('mouseout', (e) => {
+    if (!e.relatedTarget) hoverBox.show(null)
+  })
+  document.addEventListener('keydown', (e) => {
+    if (mode === 'select' && !locked && e.key === 'Escape' && selected) select(null)
+  })
 
   document.addEventListener(
     'click',
@@ -275,8 +336,8 @@
         const target = e.target === document.body || e.target === document.documentElement ? null : e.target
         return select(target === selected ? null : target)
       }
-      const target = e.target.closest('[data-content]')
-      if (target instanceof HTMLElement) start(target)
+      const target = editableOf(e.target)
+      if (target) start(target)
       else finish(true)
     },
     true,
@@ -288,6 +349,7 @@
     if (!msg || msg.source !== HOST) return
     if (msg.type === 'mode') setMode(msg.mode)
     if (msg.type === 'clear-selection') select(null, false)
+    if (msg.type === 'capture' && typeof msg.id === 'string') void capture(msg.id)
     if (msg.type === 'lock') {
       locked = msg.locked === true
       if (locked) hoverBox.show(null)

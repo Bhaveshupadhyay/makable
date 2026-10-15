@@ -3,17 +3,17 @@ import type { ReactNode } from 'react'
 import { SiteFooter } from './site-footer'
 
 const STEPS = [
-  { title: 'Tell it what you want', text: 'Say what you’re after. makable asks a few questions, one at a time, right in the chat.' },
-  { title: 'Pick a template', text: 'Templates show up inline. Pick one and the live preview opens beside the chat.' },
-  { title: 'Edit and publish', text: 'Click any text to change it, ask AI for bigger changes, then publish in one step.' },
+  { title: 'Describe your site', text: 'Say what you’re after in your own words. makable asks what it needs to know, right in the chat.' },
+  { title: 'makable builds it', text: 'It plans the site, writes every file and checks the code, in a new repo on your GitHub.' },
+  { title: 'Edit and publish', text: 'Click any text to change it, ask AI for bigger changes or edit the code, then publish in one step.' },
 ]
 
 const FEATURES = [
-  { icon: MessageSquare, title: 'Chat, not forms', text: 'Your GitHub profile fills in the first draft. You answer the rest conversationally.' },
-  { icon: MousePointerClick, title: 'Click to edit', text: 'Edit text straight in the live preview, with undo and redo.' },
-  { icon: Sparkles, title: 'Edit with AI', text: 'Select any part of the page and describe the change you want.' },
+  { icon: MessageSquare, title: 'From a prompt', text: 'Describe the site and get real React and Tailwind code, not a locked-in page.' },
+  { icon: MousePointerClick, title: 'Click to edit', text: 'Edit text straight in the live preview, with undo and redo. It changes the code.' },
+  { icon: Sparkles, title: 'Edit with AI', text: 'Select any part of the page and describe the change. It’s tried in the preview before it’s saved.' },
   { icon: Rocket, title: 'Publish anywhere', text: 'GitHub Pages, Vercel, Cloudflare Pages or Netlify.' },
-  { icon: GitBranch, title: 'Saved to your GitHub', text: 'Your session syncs to a private repo you own, so it follows you across devices.' },
+  { icon: GitBranch, title: 'Your code, your GitHub', text: 'Every site is its own repo on your GitHub, so it follows you across devices and tools.' },
   { icon: KeyRound, title: 'Bring your own model', text: 'Add your own AI keys and pick the model for every edit.' },
 ]
 
@@ -29,11 +29,12 @@ export function Landing({ children }: { children: ReactNode }) {
             Open source · publishes from your own GitHub
           </span>
           <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-6xl">
-            Build your portfolio{' '}
+            Build your website{' '}
             <span className="bg-linear-to-r from-[#FF2E63] via-[#FF7A1A] to-[#8B5CF6] bg-clip-text text-transparent">by chatting</span>
           </h1>
           <p className="mt-5 max-w-xl text-base text-pretty text-muted-foreground sm:text-lg">
-            Pick a template, answer a few questions, and edit anything right in the live preview. Then publish it to the web.
+            Describe the site you want. makable writes it into a repo on your GitHub, and you change anything by chatting, clicking or
+            editing the code. Then publish it to the web.
           </p>
           <div className="mt-10 w-full">{children}</div>
         </div>
@@ -58,7 +59,7 @@ export function Landing({ children }: { children: ReactNode }) {
 
       <section className="px-4 py-20">
         <div className="mx-auto max-w-6xl">
-          <SectionTitle eyebrow="Features" title="Everything a developer portfolio needs" />
+          <SectionTitle eyebrow="Features" title="Everything a small site needs" />
           <ul className="mt-12 grid gap-px overflow-hidden rounded-2xl border bg-border sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map(({ icon: Icon, title, text }) => (
               <li key={title} className="group bg-background p-6 transition-colors hover:bg-muted/40">

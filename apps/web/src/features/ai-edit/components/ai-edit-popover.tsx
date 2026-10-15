@@ -1,16 +1,18 @@
 import { type AiEditTarget, MAX_INSTRUCTION } from '@makable/shared'
-import { ArrowUp, Crosshair, LoaderCircle, Square, X } from 'lucide-react'
+import { ArrowUp, Crosshair, LoaderCircle, MessageCircleQuestion, Square, X } from 'lucide-react'
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { AddKeyPrompt, ModelPicker, useModelStatus } from '@/features/ai-models'
 import { useElementSize } from '@/shared/hooks/use-element-size'
 import { Button } from '@/shared/ui/button'
-import type { AiEdit } from '../hooks/use-ai-edit'
-import { targetLabel } from '../lib/build-edit-request'
+import type { AiRun } from '../hooks/use-ai-run'
+import { phaseText } from '../lib/phase-text'
 import { type Box, placePopover } from '../lib/place-popover'
+import { targetLabel } from '../lib/target-label'
+import { AnswerOptions } from './answer-options'
 
 type AiEditPopoverProps = {
-  ai: AiEdit
+  ai: AiRun
   /** The element picked in the preview. The popover shows only while there is one. */
   target: AiEditTarget | null
   /** Where that element is, in the preview page's viewport. */
@@ -30,11 +32,24 @@ export function AiEditPopover({ ai, target, anchor, scale = 1, onClear }: AiEdit
   const bounds = useElementSize(overlayRef)
   const [text, setText] = useState('')
   const status = useModelStatus()
-  // The latest selection, for the send callback: the user may pick another element while it's pending.
+  // The question the AI asked (a run paused for the user's answer): typing here answers it.
+  const asked = ai.question?.question ?? null
+  const question = asked?.question
+  // What was sent from here: once it's done (without an error), the box clears it and the selection.
+  const sent = useRef<{ text: string; target: AiEditTarget | null } | null>(null)
   const targetRef = useRef(target)
   useEffect(() => {
     targetRef.current = target
   }, [target])
+  const busy = ai.busy
+  useEffect(() => {
+    const done = sent.current
+    if (busy || !done) return
+    sent.current = null
+    if (ai.error) return
+    setText((current) => (current === done.text ? '' : current))
+    if (targetRef.current === done.target && !question) onClear()
+  }, [busy, ai.error, question, onClear])
 
   // A click in the preview picks the element; typing should follow without another click.
   useEffect(() => {
@@ -43,25 +58,21 @@ export function AiEditPopover({ ai, target, anchor, scale = 1, onClear }: AiEdit
 
   const place = target && anchor && bounds ? placePopover(scaleBox(anchor, scale), bounds) : null
 
-  function submit(e?: FormEvent) {
+  async function submit(e?: FormEvent, value = text) {
     e?.preventDefault()
-    if (!text.trim() || ai.pending) return
-    const sent = { text, target }
-    // Only clear what was sent: a new selection or draft made while waiting stays.
-    ai.send(text, target, () => {
-      setText((current) => (current === sent.text ? '' : current))
-      if (targetRef.current === sent.target) onClear()
-    })
+    if (!value.trim() || ai.busy) return
+    const started = question ? await ai.answer(value) : await ai.send(value, target)
+    if (started) sent.current = { text: value, target }
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Escape') {
       e.preventDefault()
       // While the AI works the box stays open, so Stop stays reachable.
-      if (!ai.pending) onClear()
+      if (!ai.busy) onClear()
     } else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
-      submit()
+      void submit()
     }
   }
 
@@ -69,7 +80,7 @@ export function AiEditPopover({ ai, target, anchor, scale = 1, onClear }: AiEdit
     <div ref={overlayRef} className="pointer-events-none absolute inset-0 overflow-hidden">
       {place && target && (
         <form
-          onSubmit={submit}
+          onSubmit={(e) => void submit(e)}
           aria-label="Ask AI"
           style={{ left: place.left, width: place.width, top: place.top, bottom: place.bottom }}
           className="pointer-events-auto absolute space-y-1.5 rounded-xl border bg-background p-2 shadow-lg"
@@ -80,33 +91,42 @@ export function AiEditPopover({ ai, target, anchor, scale = 1, onClear }: AiEdit
             <button
               type="button"
               aria-label="Clear selection"
-              disabled={ai.pending}
+              disabled={ai.busy}
               onClick={onClear}
               className="rounded-full p-0.5 hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
             >
               <X className="size-3.5" />
             </button>
           </div>
-          {status !== 'ready' && !ai.pending ? (
+          {question && !ai.busy && (
+            <div className="space-y-1.5 px-1">
+              <p className="flex gap-1.5 text-sm">
+                <MessageCircleQuestion className="mt-0.5 size-4 shrink-0 text-violet-600" />
+                {question}
+              </p>
+              <AnswerOptions options={asked?.options ?? []} onPick={(option) => void submit(undefined, option)} onSkip={() => void ai.skip()} />
+            </div>
+          )}
+          {status !== 'ready' && !ai.busy ? (
             <AddKeyPrompt status={status} className="px-1 pb-1" />
           ) : (
             <>
               <div className="flex items-end gap-2 rounded-lg border p-1 focus-within:ring-[3px] focus-within:ring-ring/30">
                 <textarea
                   ref={inputRef}
-                  aria-label="Ask AI to make changes"
+                  aria-label={question ? 'Answer the AI' : 'Ask AI to make changes'}
                   rows={1}
                   value={text}
-                  readOnly={ai.pending}
+                  readOnly={ai.busy}
                   maxLength={MAX_INSTRUCTION}
-                  placeholder="Ask AI to make changes"
+                  placeholder={question ? 'Type your answer' : 'Ask AI to make changes'}
                   onChange={(e) => setText(e.target.value)}
                   onKeyDown={onKeyDown}
                   className="field-sizing-content max-h-28 min-h-8 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
                 />
                 {/* Separate keys: if React reused the element, Stop would turn into a submit button
                     mid-click and send the request again. */}
-                {ai.pending ? (
+                {ai.busy ? (
                   <Button
                     key="stop"
                     type="button"
@@ -129,25 +149,20 @@ export function AiEditPopover({ ai, target, anchor, scale = 1, onClear }: AiEdit
                 )}
               </div>
               <div className="flex min-w-0 items-center">
-                <ModelPicker disabled={ai.pending} />
+                <ModelPicker disabled={ai.busy} />
               </div>
             </>
           )}
           {ai.pending && (
             <p role="status" className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
               <LoaderCircle className="size-3.5 animate-spin" />
-              AI is working on it. Editing is paused until it's done.
-            </p>
-          )}
-          {ai.invalid && (
-            <p role="alert" className="px-1 text-xs text-destructive">
-              {ai.invalid}
+              {phaseText(ai.pending)}
             </p>
           )}
           {ai.error && (
             <p role="alert" className="px-1 text-xs text-destructive">
-              {ai.error}{' '}
-              {ai.errorInSettings && (
+              {ai.error.message}{' '}
+              {ai.error.inSettings && (
                 <Link to="/settings" className="font-medium underline underline-offset-2">
                   Manage AI models
                 </Link>

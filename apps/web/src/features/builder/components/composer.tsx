@@ -1,4 +1,4 @@
-import { ArrowUp } from 'lucide-react'
+import { ArrowUp, Square } from 'lucide-react'
 import { type FormEvent, type KeyboardEvent, useState } from 'react'
 import { cn } from '@/shared/lib/cn'
 import { Button } from '@/shared/ui/button'
@@ -7,11 +7,13 @@ type ComposerProps = {
   onSend: (text: string) => void
   disabled?: boolean
   placeholder?: string
+  /** While something runs: the button stops it instead of sending. */
+  onStop?: () => void
   className?: string
 }
 
 /** Message box: Enter sends, Shift+Enter adds a line. */
-export function Composer({ onSend, disabled, placeholder = 'Message makable…', className }: ComposerProps) {
+export function Composer({ onSend, disabled, placeholder = 'Message makable…', onStop, className }: ComposerProps) {
   const [text, setText] = useState('')
 
   function submit(e?: FormEvent) {
@@ -46,9 +48,16 @@ export function Composer({ onSend, disabled, placeholder = 'Message makable…',
         onKeyDown={onKeyDown}
         className="field-sizing-content max-h-40 min-h-9 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
       />
-      <Button type="submit" size="icon" aria-label="Send" disabled={disabled || !text.trim()} className="rounded-full">
-        <ArrowUp />
-      </Button>
+      {/* Separate keys: if React reused the element, Stop would turn into a submit button mid-click. */}
+      {onStop ? (
+        <Button key="stop" type="button" size="icon" variant="outline" aria-label="Stop" title="Stop" onClick={onStop} className="rounded-full">
+          <Square className="fill-current" />
+        </Button>
+      ) : (
+        <Button key="send" type="submit" size="icon" aria-label="Send" disabled={disabled || !text.trim()} className="rounded-full">
+          <ArrowUp />
+        </Button>
+      )}
     </form>
   )
 }

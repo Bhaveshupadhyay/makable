@@ -1,6 +1,6 @@
-import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react'
-import { ChevronDown, ChevronRight, Files, LoaderCircle, Lock, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import Editor, { type BeforeMount, type Monaco, type OnMount } from '@monaco-editor/react'
+import { ChevronDown, ChevronRight, Files, LoaderCircle, Lock, PencilLine, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMediaQuery } from '@/shared/hooks/use-media-query'
 import { analytics } from '@/shared/lib/analytics'
 import { cn } from '@/shared/lib/cn'
@@ -9,10 +9,16 @@ import { buildFileTree, defaultFile, fileKind, type TreeNode } from '../lib/file
 type CodeViewProps = {
   /** Repo path → contents. Updates live (e.g. after an AI edit). */
   files: Record<string, string>
-  /** Files changed by AI edits, marked like modified files in git. */
+  /** Files with edits not saved to GitHub yet, marked like modified files in git. */
   modified?: ReadonlySet<string>
   /** Shown as the Explorer's root folder. */
   projectName: string
+  /** Takes the user's typing. Without it, the code is read-only. */
+  onChange?: (path: string, content: string) => void
+  /** Why a file can't be edited (e.g. makable's own files), or null when it can. */
+  readOnlyReason?: (path: string) => string | null
+  /** Why nothing can be edited right now (e.g. the AI is working), or null. */
+  locked?: string | null
 }
 
 const NONE: ReadonlySet<string> = new Set()
@@ -20,10 +26,10 @@ const MODIFIED = '#e2c08d'
 const FONT = 'Menlo, Monaco, "SF Mono", Consolas, "Courier New", monospace'
 
 /**
- * The project's source in a read-only, VS Code-style editor: activity bar, Explorer, tabs,
- * breadcrumb, Monaco (loaded from a CDN on first use) and a status bar. Always dark, like an IDE.
+ * The site's code in a VS Code-style editor: activity bar, Explorer, tabs, breadcrumb, Monaco (loaded from a CDN on
+ * first use) and a status bar. Always dark, like an IDE. Edits go to `onChange` as the user types.
  */
-export function CodeView({ files, modified = NONE, projectName }: CodeViewProps) {
+export function CodeView({ files, modified = NONE, projectName, onChange, readOnlyReason, locked = null }: CodeViewProps) {
   const paths = useMemo(() => Object.keys(files), [files])
   const tree = useMemo(() => buildFileTree(paths), [paths])
   const wide = useMediaQuery('(min-width: 640px)')
@@ -34,7 +40,7 @@ export function CodeView({ files, modified = NONE, projectName }: CodeViewProps)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(NONE)
   const [cursor, setCursor] = useState({ line: 1, column: 1 })
 
-  // Files can disappear (e.g. a template switch), so tabs and the active file are derived.
+  // Files can disappear (e.g. an AI change deletes one), so tabs and the active file are derived.
   const current = active && active in files ? active : (tabs.find((p) => p in files) ?? defaultFile(paths))
   const openTabs = tabs.filter((p) => p in files)
   const shownTabs = current && !openTabs.includes(current) ? [...openTabs, current] : openTabs
@@ -59,16 +65,51 @@ export function CodeView({ files, modified = NONE, projectName }: CodeViewProps)
     setCollapsed(next)
   }
 
-  const onMount: OnMount = (editor) => {
+  // Each file is its own Monaco model, created from its text when first opened and never driven by a `value` prop:
+  // with one, switching files could write the new file's text into the old model. Typing is attributed to the
+  // model's own file, and changes made elsewhere (an AI change, a text edit in the preview) are copied in below.
+  const monacoRef = useRef<Monaco | null>(null)
+  const latest = useRef({ files, onChange, readOnlyReason, locked })
+  useEffect(() => {
+    latest.current = { files, onChange, readOnlyReason, locked }
+  })
+  const copyingIn = useRef(false)
+  const [mounted, setMounted] = useState(false)
+
+  const onMount: OnMount = (editor, monaco) => {
+    monacoRef.current = monaco
+    setMounted(true)
     const update = () => {
       const position = editor.getPosition()
       if (position) setCursor({ line: position.lineNumber, column: position.column })
     }
     editor.onDidChangeCursorPosition(update)
     editor.onDidChangeModel(update)
+    editor.onDidChangeModelContent(() => {
+      const model = editor.getModel()
+      const { files: now, onChange: write, readOnlyReason: reason, locked: isLocked } = latest.current
+      if (!model || copyingIn.current || !write || isLocked) return
+      const uri = model.uri.toString()
+      const path = Object.keys(now).find((p) => monaco.Uri.parse(p).toString() === uri)
+      if (path && !reason?.(path) && model.getValue() !== now[path]) write(path, model.getValue())
+    })
   }
 
+  useEffect(() => {
+    const monaco = monacoRef.current
+    if (!monaco) return
+    for (const [path, text] of Object.entries(files)) {
+      const model = monaco.editor.getModel(monaco.Uri.parse(path))
+      if (!model || model.getValue() === text) continue
+      copyingIn.current = true
+      // An edit rather than setValue, so the user's undo history in the file survives.
+      model.pushEditOperations([], [{ range: model.getFullModelRange(), text }], () => null)
+      copyingIn.current = false
+    }
+  }, [files, mounted])
+
   const kind = current ? fileKind(current) : null
+  const readOnly = !onChange ? 'This code is read-only here.' : (locked ?? (current ? (readOnlyReason?.(current) ?? null) : null))
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#1e1e1e] text-[13px] text-[#cccccc]" style={{ colorScheme: 'dark' }}>
@@ -162,7 +203,7 @@ export function CodeView({ files, modified = NONE, projectName }: CodeViewProps)
                   theme="vs-dark"
                   path={current}
                   language={kind.language}
-                  value={files[current]}
+                  defaultValue={files[current]}
                   beforeMount={configureMonaco}
                   onMount={onMount}
                   loading={
@@ -171,8 +212,8 @@ export function CodeView({ files, modified = NONE, projectName }: CodeViewProps)
                     </span>
                   }
                   options={{
-                    readOnly: true,
-                    readOnlyMessage: { value: 'Code is read-only here. Ask the AI, or edit text in the preview.' },
+                    readOnly: !!readOnly,
+                    readOnlyMessage: { value: readOnly ?? '' },
                     fontFamily: FONT,
                     fontSize: 13,
                     lineHeight: 20,
@@ -199,14 +240,16 @@ export function CodeView({ files, modified = NONE, projectName }: CodeViewProps)
       {/* Status bar */}
       <div role="status" className="flex h-[22px] shrink-0 items-center justify-between gap-3 bg-[#007acc] px-2 text-[12px] text-white">
         <span className="flex items-center gap-3">
-          <span className="flex items-center gap-1">
-            <Lock className="size-3" /> Read-only
-          </span>
-          {modified.size > 0 && (
-            <span>
-              {modified.size} {modified.size === 1 ? 'file' : 'files'} changed by AI
+          {readOnly ? (
+            <span className="flex items-center gap-1" title={readOnly}>
+              <Lock className="size-3" /> Read-only
+            </span>
+          ) : (
+            <span className="flex items-center gap-1">
+              <PencilLine className="size-3" /> Editing
             </span>
           )}
+          {modified.size > 0 && <span>{modified.size} unsaved</span>}
         </span>
         {current && kind && (
           <span className="flex items-center gap-3 whitespace-nowrap">
@@ -275,7 +318,7 @@ function TreeItem({ node, depth, current, collapsed, modified, onOpen, onToggle 
         <Badge kind={fileKind(node.path)} />
         <span className="flex-1 truncate">{node.name}</span>
         {changed && (
-          <span title="Changed by AI" className="text-[11px] font-semibold">
+          <span title="Not saved to GitHub yet" className="text-[11px] font-semibold">
             M
           </span>
         )}
@@ -293,13 +336,13 @@ function Badge({ kind }: { kind: ReturnType<typeof fileKind> }) {
   )
 }
 
-// The preview has no type information, so the TypeScript service would flag every import.
-// Highlighting doesn't need it: turn diagnostics off and let it parse JSX.
+// The preview has no type information, so the TypeScript service would flag every import: only syntax errors are
+// shown.
 const configureMonaco: BeforeMount = (monaco) => {
   const ts = monaco.typescript
   if (!ts) return
   for (const defaults of [ts.typescriptDefaults, ts.javascriptDefaults]) {
-    defaults.setDiagnosticsOptions({ noSemanticValidation: true, noSyntaxValidation: true })
+    defaults.setDiagnosticsOptions({ noSemanticValidation: true, noSyntaxValidation: false })
     defaults.setCompilerOptions({ jsx: ts.JsxEmit.Preserve, target: ts.ScriptTarget.ESNext, allowJs: true, allowNonTsExtensions: true })
   }
 }

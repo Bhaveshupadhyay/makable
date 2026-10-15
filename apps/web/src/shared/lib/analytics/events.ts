@@ -22,61 +22,45 @@ export type AnalyticsEvents = {
     viewport_height: number
   }
 
-  // Chat (builder conversation)
-  chat_message_sent: { text: string; length: number; step: string; next_step: string; reply: string | null; signed_in: boolean }
-  chat_step_reached: { step: string; from: string }
-  template_selected: { template_id: string; step: string; first_pick: boolean }
-  github_profile_loaded: { login: string }
-  github_profile_failed: { login: string }
+  // Sign-in from the landing page
   github_sign_in_prompted: { reason: string }
-  github_connected_in_chat: { reason: string }
-  session_imported: { source: string }
+
+  // Sites built from a prompt
+  site_create_started: { prompt: string; model: string }
+  site_created: { duration_ms: number; model: string }
+  site_create_failed: { code: string | null; message: string }
+  site_save_problem: { state: 'error' | 'blocked' | 'conflict'; message: string | null }
+  site_conflict_resolved: { choice: 'keep-local' | 'load-remote' }
 
   // AI edits
   ai_mode_changed: { enabled: boolean }
   ai_edit_requested: {
-    request_id: string
     instruction: string
-    template_id: string
     model: string
     model_key: string | null
     target_label: string | null
     target_tag: string | null
     target_text: string | null
-    target_content_path: string | null
-    target_section: string | null
+    /** Where the selected element is in the code (`path:line`). */
+    target_source: string | null
     target_selector: string | null
-    file_paths: string[]
-    history_turns: number
+    screenshot: boolean
   }
-  ai_edit_response: {
-    request_id: string
-    instruction: string
-    tier: number
-    summary: string
-    edits_count: number
-    edited_paths: string[]
-    /** The search/replace edits the model returned, as JSON (truncated). */
-    edits: string
-    applied: boolean
-    not_applied_reason: string | null
-    escalation_reason: string | null
-    reply: string
-    model: string
-    duration_ms: number
-  }
-  ai_edit_failed: { request_id: string; instruction: string; code: string | null; status: number | null; message: string; model: string; duration_ms: number }
+  /** How a request ended: `applied`, `escalated`, `needs_input`... */
+  ai_edit_finished: { instruction: string; status: string; summary: string; changed_paths: string[]; model: string; duration_ms: number }
+  ai_edit_failed: { instruction: string; code: string | null; status: number | null; message: string; model: string; duration_ms: number }
   ai_edit_invalid: { length: number }
-  ai_edit_stopped: { request_id: string; instruction: string; duration_ms: number }
-  ai_edit_rolled_back: { instruction: string; error: string }
+  ai_edit_stopped: { instruction: string; phase: string; duration_ms: number }
+  ai_edit_undone: { commit_sha: string }
+  ai_question_answered: { question: string; answer: string; option: boolean }
 
-  // Preview and visual editing
-  preview_element_selected: { tag: string; text: string; content_path: string | null; section: string | null; selector: string }
+  // Preview and manual editing
+  preview_element_selected: { tag: string; text: string; source: string | null; section: string | null; selector: string }
   visual_text_edited: { path: string; value: string }
   visual_edit_rejected: { path: string; error: string }
   edit_undone: { source: 'button' | 'keyboard' }
   edit_redone: { source: 'button' | 'keyboard' }
-  preview_error: { message: string; template_id: string | null }
+  preview_error: { message: string; path: string | null }
   code_file_opened: { path: string; modified: boolean }
 
   // AI models (bring your own key)
@@ -101,10 +85,6 @@ export type AnalyticsEvents = {
   deploy_started: { target: string | null }
   deploy_finished: { target: string | null; conclusion: string | null; timed_out: boolean }
 
-  // GitHub workspace sync
-  github_sync_started: Record<string, never>
-  github_sync_problem: { state: 'error' | 'blocked' | 'conflict'; message: string | null }
-  github_sync_resolved: { choice: 'keep-local' | 'load-remote' }
 }
 
 export type AnalyticsEventName = keyof AnalyticsEvents
