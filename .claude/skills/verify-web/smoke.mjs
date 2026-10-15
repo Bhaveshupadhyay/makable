@@ -1,432 +1,322 @@
-// Smoke test for the builder SPA. See SKILL.md for setup.
-import { readdirSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+// The builder, end to end in the browser: the real SPA against a scripted makable-backend (see fake-backend.mjs).
+// A site is created from a prompt (the name question, progress), opened in the live preview, edited by hand (text in
+// the preview, the code), changed with AI (tried in the preview, then committed; undone; a question; a change that
+// breaks the preview) and published. Run the dev server WITHOUT mock auth. See SKILL.md.
 import { join } from 'node:path'
-import { chromium } from 'playwright-core'
+import { clickInPreview, expect, fail, fakeSites, launch, ndjson, ok, REPO_URL, routeBackend, sha, siteAnswer, watchErrors } from './fake-backend.mjs'
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5199'
 const OUT_DIR = process.env.OUT_DIR ?? '.'
-const cache = join(homedir(), 'Library/Caches/ms-playwright')
-const shellDir = readdirSync(cache).find((d) => d.startsWith('chromium_headless_shell'))
-const executablePath = join(cache, shellDir, 'chrome-headless-shell-mac-arm64/chrome-headless-shell')
+const PROMPT = 'A site for my bakery, Crumb, with our opening hours'
+const NAME_QUESTION = { question: 'What should the site be called?', options: ['Crumb Bakery'], allowFreeText: true, kind: 'project_name' }
+const COLOUR_QUESTION = { question: 'Which colour should the buttons be?', options: ['#e11d48', '#2563eb'], allowFreeText: true }
+const WEEKEND = '<p className="mt-2 text-amber-800">Open weekends 8–2</p>'
 
-const browser = await chromium.launch({ executablePath })
+const site = fakeSites({ exists: false })
+const seen = { creates: [], answers: [], edits: [], results: [], editAnswers: [], undos: [], publishes: [], statusSince: [] }
+// What the next AI request answers, in order.
+const editAnswers = []
+let runs = 0
+const runId = () => `00000000-0000-4000-8000-${String(++runs).padStart(12, '0')}`
+
+function answer(method, path, body, query) {
+  const known = siteAnswer(site, method, path, body)
+  if (known) return known
+  if (method === 'POST' && path === '/ai/create') {
+    seen.creates.push(body)
+    const id = runId()
+    site.projectId = body.projectId
+    site.thread = { projectId: body.projectId, status: 'needs_input', turns: [], run: { runId: id, mode: 'create', instruction: body.prompt, target: null, question: NAME_QUESTION } }
+    return ndjson([
+      { type: 'progress', stage: 'name', message: 'Thinking of a name' },
+      { type: 'result', data: { status: 'needs_input', runId: id, question: NAME_QUESTION } },
+    ])
+  }
+  if (method === 'POST' && path === `/ai/create/${site.projectId}/answer`) {
+    seen.answers.push(body)
+    site.create(site.projectId)
+    site.thread.status = 'idle'
+    site.thread.run = null
+    site.turn({ instruction: PROMPT, reply: 'Built Crumb Bakery: a warm landing page with your hours.', questions: [{ question: NAME_QUESTION.question, answer: body.answer }] })
+    return ndjson([
+      { type: 'progress', stage: 'setup', message: 'Creating the repository for Crumb Bakery on your GitHub' },
+      { type: 'progress', stage: 'plan', message: 'Planning the site' },
+      { type: 'progress', stage: 'write', message: 'Writing src/index.css', path: 'src/index.css', done: 0, total: 2 },
+      { type: 'ping' },
+      { type: 'progress', stage: 'write', message: 'Writing src/App.tsx', path: 'src/App.tsx', done: 1, total: 2 },
+      { type: 'progress', stage: 'check', message: 'Checking the code' },
+      { type: 'progress', stage: 'commit', message: 'Saving the site to your GitHub' },
+      { type: 'result', data: { status: 'created', runId: body.runId, summary: 'Built it.', commitSha: site.commit, site: site.sites[0] } },
+    ])
+  }
+  if (method === 'POST' && path === '/ai/edit') {
+    seen.edits.push(body)
+    return editAnswers.shift()?.(body) ?? fail(500, 'internal_error', 'unscripted AI edit')
+  }
+  if (method === 'POST' && path === `/ai/edit/${site.projectId}/answer`) {
+    seen.editAnswers.push(body)
+    return editAnswers.shift()?.(body) ?? fail(500, 'internal_error', 'unscripted answer')
+  }
+  if (method === 'POST' && path === `/ai/edit/${site.projectId}/result`) {
+    seen.results.push(body)
+    return editAnswers.shift()?.(body) ?? fail(500, 'internal_error', 'unscripted result')
+  }
+  if (method === 'DELETE' && path === `/ai/threads/${site.projectId}/run`) {
+    site.thread.status = 'idle'
+    site.thread.run = null
+    return { status: 204 }
+  }
+  if (method === 'POST' && path === `/sites/${site.projectId}/undo`) {
+    seen.undos.push(body)
+    if (body.baseCommit !== site.commit) return fail(409, 'site_conflict', 'Changed elsewhere', { commitSha: site.commit })
+    const files = { 'src/App.tsx': site.files['src/App.tsx'].replace(`\n      ${WEEKEND}`, '') }
+    return ok({ commitSha: site.commitChanges(files), files })
+  }
+  if (method === 'POST' && path === `/publish/${site.projectId}`) {
+    seen.publishes.push(body)
+    if (body.baseCommit !== site.commit) return fail(409, 'site_conflict', 'Changed elsewhere', { commitSha: site.commit })
+    const commitSha = site.commitChanges({ '.github/workflows/makable-deploy.yml': 'name: deploy\n' })
+    return ok({
+      target: 'github-pages',
+      repoFullName: 'octocat/crumb-bakery',
+      repoUrl: REPO_URL,
+      branch: 'main',
+      commitSha,
+      changed: true,
+      deploy: 'started',
+      deployStartedAt: '2026-10-15T12:00:00Z',
+      siteUrl: 'https://octocat.github.io/crumb-bakery/',
+      projectName: null,
+      missingSecrets: [],
+      secretsUrl: `${REPO_URL}/settings/secrets/actions`,
+      actionsUrl: `${REPO_URL}/actions/workflows/makable-deploy.yml`,
+    })
+  }
+  if (method === 'GET' && path === `/publish/${site.projectId}/status`) {
+    seen.statusSince.push(query.get('since'))
+    const done = seen.statusSince.length > 1
+    return ok({
+      target: 'github-pages',
+      siteUrl: 'https://octocat.github.io/crumb-bakery/',
+      run: { status: done ? 'completed' : 'in_progress', conclusion: done ? 'success' : null, headSha: site.commit, htmlUrl: `${REPO_URL}/actions/runs/1`, createdAt: '2026-10-15T12:00:01Z' },
+    })
+  }
+  return null
+}
+
+const browser = await launch()
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
-const errors = []
-page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
-page.on('console', (m) => m.type() === 'error' && errors.push(`console: ${m.text()}`))
-// The preview may draw a wide page with CSS zoom (Desktop is 1280px, zoomed to fit the pane). Playwright's
-// clicks and boxes inside an iframe ignore that zoom, so measure and click with the real mouse instead.
-async function previewBox(page, locator) {
-  await locator.scrollIntoViewIfNeeded()
-  const r = await locator.evaluate((el) => {
-    const b = el.getBoundingClientRect()
-    return { x: b.x, y: b.y, width: b.width, height: b.height }
-  })
-  const f = await page.locator('iframe[title="Portfolio preview"]').evaluate((el) => {
-    const b = el.getBoundingClientRect()
-    const z = Number.parseFloat(getComputedStyle(el).zoom) || 1
-    return { x: b.x + el.clientLeft * z, y: b.y + el.clientTop * z, z }
-  })
-  return { x: f.x + r.x * f.z, y: f.y + r.y * f.z, width: r.width * f.z, height: r.height * f.z }
+const errors = watchErrors(page)
+await routeBackend(page, answer)
+const shot = (name) => page.screenshot({ path: join(OUT_DIR, name) })
+const frame = page.frameLocator('iframe[title="Site preview"]')
+const composer = page.getByRole('textbox', { name: 'Message' })
+const say = async (text) => {
+  await composer.fill(text)
+  await composer.press('Enter')
 }
-async function clickInPreview(page, locator) {
-  const b = await previewBox(page, locator)
-  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2)
-}
-
-// Editable contract: content elements carry data-content paths.
-// Catalog templates may show a field more than once (e.g. the name in nav and hero), hence `exact`.
-async function expectEditable(frame, label, { exact = true } = {}) {
-  for (const path of ['profile.name', 'profile.headline', 'projects.0.name']) {
-    const count = await frame.locator(`[data-content="${path}"]`).count()
-    if (exact ? count !== 1 : count < 1) throw new Error(`${label}: expected one [data-content="${path}"], found ${count}`)
+const chatSays = (text, timeout = 30_000) => page.getByText(text).last().waitFor({ timeout })
+const until = async (check, what, timeout = 60_000) => {
+  const end = Date.now() + timeout
+  while (!check()) {
+    if (Date.now() > end) throw new Error(`timed out waiting for ${what}`)
+    await page.waitForTimeout(100)
   }
-  console.log(`✓ ${label} template: content tagged with data-content`)
 }
-
-// Visual edit: edit mode → click tagged text → type → Enter, plus cancel, validation and undo/redo.
-async function expectVisualEdit(page, frame, label) {
-  const name = frame.locator('[data-content="profile.name"]')
-  const original = (await name.textContent()).trim()
-  const editor = frame.locator('.makable-editor')
-  const editName = async (text, key = 'Enter') => {
-    await clickInPreview(page, name)
-    await editor.waitFor()
-    await page.keyboard.press('ControlOrMeta+A')
-    await page.keyboard.press('Backspace')
-    await page.keyboard.type(text)
-    await page.keyboard.press(key)
-  }
-  const expectName = async (text) => {
-    await frame.locator('[data-content="profile.name"]', { hasText: text }).waitFor({ timeout: 30000 })
-  }
-
-  await page.getByRole('button', { name: 'Edit text' }).click()
-  await page.getByRole('status').filter({ hasText: 'Click any text in the preview to edit it' }).waitFor()
-  await editName(`${label} edited`)
-  await expectName(`${label} edited`)
-  await editName('not saved', 'Escape')
-  if ((await name.textContent()).includes('not saved')) throw new Error(`${label}: Escape did not cancel`)
-  await editName('')
-  await page.getByText(/Couldn't save that edit/).waitFor()
-  await expectName(`${label} edited`)
-  await page.getByRole('button', { name: 'Undo' }).click()
-  await expectName(original)
-  await page.getByRole('button', { name: 'Redo' }).click()
-  await expectName(`${label} edited`)
-  await page.getByRole('button', { name: 'Edit text' }).click()
-  console.log(`✓ ${label} template: visual edit, cancel, validation, undo/redo`)
-}
-
-const shot = (name, fullPage = false) => page.screenshot({ path: join(OUT_DIR, name), fullPage })
 
 try {
-  // guest: the landing page, signed out (old /login links land there too)
-  await page.goto(`${BASE_URL}/login`)
-  await page.waitForURL((url) => url.pathname === '/')
-  if (await page.getByRole('button', { name: 'Account menu' }).count()) throw new Error('expected a guest session')
-  console.log('✓ auth: guests land on the landing page')
-
-  // chat: start from a clean conversation
-  // header: About page with the animated footer logo, then back to the builder
-  await page.getByRole('navigation', { name: 'Site' }).getByRole('link', { name: 'About' }).click()
-  await page.getByRole('heading', { name: 'A website builder that talks with you' }).waitFor()
-  await page.locator('.mk-footer-logo').scrollIntoViewIfNeeded()
-  await page.locator('.mk-footer-logo[data-in-view]').waitFor()
-  await shot('about.png')
-  await page.getByRole('contentinfo').getByRole('link', { name: 'Builder' }).click()
-  console.log('✓ site: About page and the footer logo animation')
-
-  // Building needs GitHub: clicking or typing into the prompt box asks a guest to sign in, and nothing is typed.
-  const composer = page.getByRole('textbox', { name: 'Message' })
-  const signIn = page.getByRole('dialog', { name: 'Sign in to start building' })
-  await page.getByRole('button', { name: 'I want a portfolio' }).waitFor()
-  await shot('chat-start.png')
-  await composer.click()
-  await signIn.waitFor()
-  await signIn.getByRole('link', { name: 'Create one for free' }).waitFor()
+  // 0. A guest: the landing page's prompt box asks them to sign in, and nothing is sent.
+  site.signedIn = false
+  await page.goto(BASE_URL)
+  await page.getByPlaceholder('Describe the site you want to build…').click()
+  const signIn = page.getByRole('dialog')
+  await signIn.getByRole('button', { name: 'Continue with GitHub' }).waitFor()
   await shot('sign-in.png')
   await signIn.getByRole('button', { name: 'Close' }).click()
-  await signIn.waitFor({ state: 'detached' })
-  await composer.focus()
-  await page.keyboard.press('h')
-  await signIn.waitFor()
-  await page.keyboard.press('Escape')
-  await signIn.waitFor({ state: 'detached' })
-  if ((await composer.inputValue()) !== '') throw new Error('a guest should not be able to type into the prompt box')
-  if (await page.getByRole('group', { name: 'Templates' }).count()) throw new Error('a guest should not start the chat')
-  // An idea picked before signing in is sent once they're back.
-  await page.getByRole('button', { name: 'I want a portfolio' }).click()
-  await signIn.getByRole('button', { name: 'Continue with GitHub' }).click()
+  expect(seen.creates.length === 0, 'a guest must not start a creation')
+  console.log('✓ guest: the prompt box asks to sign in first')
+  site.signedIn = true
+
+  // 1. The landing page, signed in, with no sites: the prompt builds one.
+  await page.goto(BASE_URL)
   await page.getByRole('button', { name: 'Account menu' }).waitFor()
-  await page.getByRole('group', { name: 'Templates' }).last().waitFor()
-  console.log('✓ auth: the prompt box asks guests to sign in; the idea they picked is sent after signing in')
-  const say = async (text) => {
-    await composer.fill(text)
-    await composer.press('Enter')
-  }
-  const assistantSays = (text) => page.getByText(text).last().waitFor({ timeout: 30000 })
+  await page.getByPlaceholder('Describe the site you want to build…').waitFor()
+  await shot('landing.png')
+  await say(PROMPT)
+  await chatSays(NAME_QUESTION.question)
+  expect(seen.creates[0]?.prompt === PROMPT, `create body: ${JSON.stringify(seen.creates[0])}`)
+  await shot('create-name.png')
+  console.log('✓ create: the prompt starts a creation, which asks for the name')
 
-  await page.getByRole('button', { name: 'Terminal template' }).last().click()
-  console.log('✓ chat: landing prompt → template picker → template chosen')
+  await page.getByRole('button', { name: 'Crumb Bakery', exact: true }).click()
+  await frame.getByRole('heading', { name: 'Crumb Bakery' }).waitFor({ timeout: 90_000 })
+  expect(seen.answers[0]?.answer === 'Crumb Bakery', `answer body: ${JSON.stringify(seen.answers[0])}`)
+  await chatSays('Built Crumb Bakery: a warm landing page with your hours.')
+  const tagged = await frame.locator('[data-src^="src/App.tsx:"]').count()
+  expect(tagged >= 3, `the preview's elements must carry data-src (found ${tagged})`)
+  await shot('workspace.png')
+  console.log(`✓ create: the site opens in the live preview, its elements tagged with their place in the code (${tagged})`)
 
-  // preview opens beside the chat as soon as a template is picked
-  const started = Date.now()
-  const status = page.getByText(/Live preview|Preview error/)
-  await status.waitFor({ timeout: 60000 })
-  if ((await status.textContent()) !== 'Live preview') throw new Error(`preview status: ${await status.textContent()}`)
-  const frame = page.frameLocator('iframe[title="Portfolio preview"]')
-  await frame.locator('[data-theme="terminal"]').waitFor({ timeout: 30000 })
-  console.log(`✓ preview: live in ${Date.now() - started} ms with terminal theme`)
-
-  // details, one question at a time
-  await say('not a valid username!')
-  await assistantSays("doesn't look like a GitHub username")
-  await say('@octocat')
-  await assistantSays('Found you')
-  // "Edit with AI" is in the chat's quick replies (first) and the preview toolbar (last).
-  const aiEditChat = () => page.getByRole('button', { name: 'Edit with AI' }).first()
-  const aiEditToolbar = page.getByRole('button', { name: 'Edit with AI' }).last()
-  if ((await page.getByRole('button', { name: 'Edit with AI' }).count()) !== 2) throw new Error('expected Edit with AI in the chat and the toolbar')
-  await say('Smoke test headline')
-  await frame.getByText('Smoke test headline').waitFor({ timeout: 30000 })
-  await page.getByRole('button', { name: /^(Keep it|Skip)$/ }).click()
-  await say('my email is secret')
-  await assistantSays("doesn't look like an email")
-  await say('smoke@example.com')
-  await say('linkedin.com/in/octocat')
-  await assistantSays('Your portfolio is ready')
-  await frame.getByText('smoke@example.com').waitFor({ timeout: 30000 })
-  console.log('✓ chat: GitHub lookup, headline, bio, email, links (with re-asks on bad input)')
-
-  // AI edit: Edit with AI in the chat turns AI mode on; clicking a skill opens the AI box next to it
-  await aiEditChat().click()
-  const aiBox = page.getByRole('textbox', { name: 'Ask AI to make changes' })
-  const popover = page.getByRole('form', { name: 'Ask AI' })
-  await page.getByText('Click anything in the preview to change it with AI').waitFor()
-  const chip = frame.locator('[data-content="skills.0"]')
-  await clickInPreview(page, chip)
-  await page.getByText(/› skills\.0/).waitFor()
-  const near = async () => {
-    const [el, box] = [await previewBox(page, chip), await popover.boundingBox()]
-    const gap = box.y >= el.y ? box.y - (el.y + el.height) : el.y - (box.y + box.height)
-    if (gap < 0 || gap > 20) throw new Error(`AI box should sit next to the selected element (gap ${gap}px)`)
-    return box.y
-  }
-  const before = await near()
-  if (!(await aiBox.evaluate((el) => el === document.activeElement))) throw new Error('AI box should take focus after a selection')
-  // It follows the element when the preview scrolls. The desktop page (1280px, drawn scaled down to fit)
-  // may fit the frame, so give it room to scroll; the box moves by the scroll times the scale.
-  const scrolled = await frame.locator('html').evaluate(() => {
-    document.body.style.paddingBottom = '2000px'
-    const y = window.scrollY
-    window.scrollBy(0, 80)
-    return { by: window.scrollY - y, width: window.innerWidth }
-  })
-  const drawn = (await page.locator('iframe[title="Portfolio preview"]').boundingBox()).width
-  const expected = (scrolled.by * drawn) / scrolled.width
-  await page.waitForTimeout(300)
-  const moved = before - (await near())
-  if (Math.abs(scrolled.by - 80) > 1 || Math.abs(moved - expected) > 3) {
-    throw new Error(`AI box did not follow the element on scroll (moved ${moved}px, expected ${expected}px)`)
-  }
-  console.log('✓ AI edit: box opens next to the selected element, focused, and follows it on scroll')
-  // AI edits run on makable-backend and need a real signed-in session. With mock auth (or no backend) the
-  // backend answers 401 (or the proxy fails), so the AI steps are skipped and only the code view is checked.
-  // A signed-in session gets a 422 for this empty body.
-  // Sent through Playwright (it shares the page's cookies), so a 401 doesn't count as a page console error.
-  const aiStatus = (await page.request.post(new URL('/api/v1/ai/edit', page.url()).href, { data: {} })).status()
-  if (aiStatus === 422) {
-    const skills = frame.locator('[data-content^="skills."]')
-    const skillCount = await skills.count()
-    // While the AI works, every editor is locked and the box offers Stop instead of Send.
-    await aiBox.fill('Remove this skill, slowly')
-    await aiBox.press('Enter')
-    const stop = page.getByRole('button', { name: 'Stop AI' })
-    await stop.waitFor()
-    await page.getByText("Editing is paused until it's done").waitFor()
-    for (const name of ['Edit text', 'Edit with AI', 'Undo', 'Redo']) {
-      if (await page.getByRole('button', { name, exact: true }).last().isEnabled()) throw new Error(`${name} should be disabled while the AI works`)
-    }
-    await clickInPreview(page, frame.locator('[data-content="profile.name"]').first())
-    await page.waitForTimeout(300)
-    if (!(await page.getByText(/› skills\.0/).isVisible())) throw new Error('clicks in the preview should not change the selection while the AI works')
-    await shot('ai-edit-pending.png')
-    await stop.click()
-    await assistantSays('Stopped. Nothing was changed.')
-    await page.getByRole('button', { name: 'Send to AI' }).waitFor()
-    if (!(await page.getByRole('button', { name: 'Edit text', exact: true }).isEnabled())) throw new Error('Edit text should be enabled again after Stop')
-    // The aborted answer arrives at the mock model's pace; it must not be applied.
-    await page.waitForTimeout(5500)
-    if ((await skills.count()) !== skillCount) throw new Error('a stopped request should change nothing')
-    console.log('✓ AI edit: editing locked while the AI works; Stop cancels it and changes nothing')
-    await aiBox.fill('Remove this skill and punch up the headline')
-    await shot('ai-edit-popover.png')
-    const aiResponse = page.waitForResponse((r) => r.url().endsWith('/api/v1/ai/edit'))
-    await aiBox.press('Enter')
-    // The backend calls the mock model; its edits are applied to the preview: the content file
-    // edit becomes the portfolio, the stylesheet edit an AI-edited file.
-    const headline = frame.locator('[data-content="profile.headline"]').first()
-    await frame.getByText('AI headline').waitFor({ timeout: 60000 })
-    if ((await skills.count()) !== skillCount - 1) throw new Error('the AI should have removed one skill')
-    const outline = () => headline.evaluate((el) => getComputedStyle(el).outlineColor)
-    for (let i = 0; i < 50 && (await outline()) !== 'rgb(16, 185, 129)'; i++) await page.waitForTimeout(200)
-    if ((await outline()) !== 'rgb(16, 185, 129)') throw new Error(`the AI's stylesheet edit should outline the headline, got ${await outline()}`)
-    const response = await (await aiResponse).text()
-    if (!response.includes('"tier":1') || !response.includes('Content path: skills.0')) throw new Error(`unexpected AI response: ${response.slice(0, 300)}`)
-    // The system prompt stays on the server: the browser never sends it or gets it back.
-    if (response.includes('You edit a website')) throw new Error('the system prompt reached the browser')
-    // No request inspector panel under the preview.
-    if (await page.getByRole('region', { name: 'AI request' }).count()) throw new Error('the AI request panel should not be shown')
-    await assistantSays('Removed the first skill, rewrote the headline and outlined it')
-    await shot('ai-edit.png')
-    // Sending closes the box (the selection is used up); the change is one undo step.
-    await aiBox.waitFor({ state: 'detached' })
-    // Code view: a VS Code-style editor over the same files. Opening it leaves AI mode; the
-    // AI-edited stylesheet is marked M and shows the model's rule.
-    await page.getByRole('radio', { name: 'Code' }).click()
-    const explorer = page.getByRole('navigation', { name: 'Explorer' })
-    await explorer.waitFor()
-    await page.getByRole('tab', { name: /App\.tsx/ }).waitFor()
-    await page.getByText('1 file changed by AI').waitFor()
-    const cssItem = explorer.getByTitle('src/index.css')
-    if (!(await cssItem.textContent()).includes('M')) throw new Error('the AI-edited stylesheet should be marked M in the Explorer')
-    await cssItem.click()
-    const code = page.locator('.monaco-editor .view-lines')
-    const codeText = async () => ((await code.textContent()) ?? '').replace(/\u00a0/g, ' ')
-    for (let i = 0; i < 100 && !(await codeText()).includes('outline: 3px solid'); i++) await page.waitForTimeout(200)
-    if (!(await codeText()).includes('outline: 3px solid')) throw new Error('the editor should show the AI-edited stylesheet')
-    await page.getByText(/Ln \d+, Col \d+/).waitFor()
-    await shot('code-view.png')
-    await page.getByRole('radio', { name: 'Preview' }).click()
-    await frame.locator('[data-content="profile.headline"]').first().waitFor()
-    if ((await aiEditToolbar.getAttribute('aria-pressed')) === 'true') throw new Error('opening the code view should leave AI mode')
-    console.log('✓ code view: IDE-style explorer, tabs and editor; AI-edited file marked and shown; back to preview')
-    await page.getByRole('button', { name: /Undo/ }).click()
-    await frame.getByText('Smoke test headline').waitFor({ timeout: 30000 })
-    if ((await skills.count()) !== skillCount) throw new Error('undo should bring the skill back')
-    for (let i = 0; i < 50 && (await outline()) === 'rgb(16, 185, 129)'; i++) await page.waitForTimeout(200)
-    if ((await outline()) === 'rgb(16, 185, 129)') throw new Error('undo should also revert the stylesheet edit')
-    console.log('✓ AI edit: file edits from the model applied to the preview (content + stylesheet), shown in the chat, undone in one step')
-  } else {
-    console.log(`- AI edit: skipped (the backend answered ${aiStatus}; it needs makable-backend and a real GitHub sign-in)`)
-    await page.getByRole('radio', { name: 'Code' }).click()
-    await page.getByRole('navigation', { name: 'Explorer' }).waitFor()
-    await page.getByRole('tab', { name: /App\.tsx/ }).waitFor()
-    await page.getByText(/Ln \d+, Col \d+/).waitFor()
-    await shot('code-view.png')
-    await page.getByRole('radio', { name: 'Preview' }).click()
-    await frame.locator('[data-content="profile.headline"]').first().waitFor()
-    if ((await aiEditToolbar.getAttribute('aria-pressed')) === 'true') throw new Error('opening the code view should leave AI mode')
-    console.log('✓ code view: IDE-style explorer, tabs and editor; back to preview')
-  }
-  await expectEditable(frame, 'React')
-  await expectVisualEdit(page, frame, 'React')
-  const title = await frame.locator('html').evaluate(() => document.title)
-  if (title !== 'React edited') throw new Error(`React template title should follow profile.name, got "${title}"`)
-  console.log('✓ React template: document title follows profile.name')
-  await shot('builder.png')
-
-  // conversation and portfolio survive a reload
-  await page.reload()
-  await assistantSays('Your portfolio is ready')
-  await frame.getByText('Smoke test headline').waitFor({ timeout: 60000 })
-  console.log('✓ chat: conversation persisted across reload')
-
-  // template switch from the chat: static Paper template, then back to a React one
-  await page.getByRole('button', { name: 'Change template' }).click()
-  // Undo history is in memory only (gone after the reload above), so make a fresh edit first.
+  // 2. Edit text in the preview: it changes the code, and Save now commits it.
   await page.getByRole('button', { name: 'Edit text' }).click()
-  await clickInPreview(page, frame.locator('[data-content="profile.name"]'))
-  await page.keyboard.press('ControlOrMeta+A')
-  await page.keyboard.type('Before switch')
-  await page.keyboard.press('Enter')
-  await frame.locator('[data-content="profile.name"]', { hasText: 'Before switch' }).waitFor({ timeout: 30000 })
-  await page.getByRole('button', { name: 'Edit text' }).click()
-  if (await page.getByRole('button', { name: 'Undo' }).isDisabled()) throw new Error('expected undo history before the switch')
-  await page.getByRole('button', { name: 'Paper template' }).last().click()
-  await frame.locator('.page .sidebar').waitFor({ timeout: 60000 })
-  // A chat-side change clears visual-edit history, so undo can't revert the template switch.
-  if (!(await page.getByRole('button', { name: 'Undo' }).isDisabled())) throw new Error('undo history survived a chat-side change')
-  console.log('✓ visual edit: history cleared by chat-side template switch')
-  const font = await frame.locator('.sidebar h1').evaluate((el) => getComputedStyle(el).fontFamily)
-  if (!font.includes('Georgia')) throw new Error(`static template styles not applied (h1 font: ${font})`)
-  await expectEditable(frame, 'static')
-  await expectVisualEdit(page, frame, 'static')
-  await shot('builder-static.png')
-  await say('switch to a different template')
-  await page.getByRole('button', { name: 'Bento template' }).last().click()
-  await frame.locator('[data-theme="bento"]').waitFor({ timeout: 60000 })
-  await frame.getByText('static edited').waitFor()
-  console.log('✓ template switch: React → static → React, content kept')
+  await clickInPreview(page, frame.getByText('Fresh bread every morning'))
+  const editor = frame.getByRole('textbox', { name: 'Edit text' })
+  await editor.fill('Warm bread all day')
+  await editor.press('Enter')
+  await frame.getByText('Warm bread all day').waitFor({ timeout: 30_000 })
+  await page.getByRole('button', { name: /^Saving to GitHub/ }).click()
+  await page.getByRole('menuitem', { name: 'Save now' }).click()
+  await until(() => site.saves.length === 1, 'the save')
+  const [saved] = site.saves
+  expect(saved.baseCommit === sha(1), `the save must build on the site's commit: ${saved.baseCommit}`)
+  const savedApp = saved.files['src/App.tsx'] ?? ''
+  expect(savedApp.includes('Warm bread all day') && !savedApp.includes('data-src'), `the save must carry the edited source, without the preview tags: ${savedApp}`)
+  await page.keyboard.press('Escape')
+  console.log('✓ text edit: the source is patched where the element is written, and saved as a commit')
 
-  // catalog template with binary assets: images are served from its hosted demo, not the preview
-  await say('show me the templates')
-  const picker = page.getByRole('group', { name: 'Templates' }).last()
-  const thumbs = picker.locator('img')
-  await thumbs.first().evaluate((img) => img.decode())
-  // The chat shows a short list of 6 (plus the current template if it's further down).
-  // With 6 or fewer templates there's nothing to expand.
-  const shortlist = await thumbs.count()
-  const showAll = page.getByRole('button', { name: /^Show all \d+ templates$/ }).last()
-  if (await showAll.count()) {
-    const total = Number((await showAll.textContent()).match(/\d+/)[0])
-    if (shortlist !== 6 || total <= 6) throw new Error(`expected a short list of 6 of ${total}, got ${shortlist}`)
-    await showAll.click()
-    if ((await thumbs.count()) !== total) throw new Error(`Show all should list ${total} templates, got ${await thumbs.count()}`)
-    console.log(`✓ picker: ${shortlist} of ${total} catalog templates, then Show all`)
-  } else {
-    if (shortlist > 6) throw new Error(`${shortlist} templates listed without a Show all toggle`)
-    console.log(`✓ picker: all ${shortlist} catalog templates, no Show all needed`)
-  }
-  await page.getByRole('button', { name: 'Dopefolio template' }).last().click()
-  const assets = frame.locator('img[src*="/makable-templates/"]')
-  await assets.first().waitFor({ state: 'attached', timeout: 60000 })
-  // Static templates reload when their files change; check the images once the content has rendered.
-  await frame.getByText('static edited').first().waitFor({ timeout: 30000 })
-  const broken = await assets.evaluateAll(async (imgs) => {
-    await Promise.all(imgs.map((img) => img.decode().catch(() => {})))
-    return imgs.filter((img) => !img.naturalWidth).map((img) => img.src)
-  })
-  if (broken.length) throw new Error(`template assets failed to load: ${broken.join(', ')}`)
-  await frame.getByText('static edited').first().waitFor()
-  await expectEditable(frame, 'Dopefolio', { exact: false })
-  await shot('builder-remote-assets.png')
-  console.log(`✓ Dopefolio template: ${await assets.count()} hosted assets load, content kept`)
-  await say('change template')
-  await page.getByRole('button', { name: 'Dopefolio template', pressed: true }).last().waitFor()
-  console.log('✓ picker: the current template stays visible in the short list')
+  // 3. AI edit on a selected element: tried in the preview, then committed; the chat offers Undo.
+  const withWeekend = () => ({ 'src/App.tsx': site.files['src/App.tsx'].replace('</p>', `</p>\n      ${WEEKEND}`) })
+  editAnswers.push(
+    () => ok({ status: 'awaiting_result', runId: runId(), summary: 'Added the weekend hours.', files: withWeekend() }),
+    (body) => {
+      if (!body.ok) return fail(502, 'ai_edit_broke_preview', 'broke')
+      const files = withWeekend()
+      const commitSha = site.commitChanges(files)
+      site.turn({ instruction: 'Add our weekend hours under this', target: 'p “Warm bread all day”', reply: 'Added the weekend hours.' })
+      return ok({ status: 'applied', runId: body.runId, summary: 'Added the weekend hours.', commitSha, files })
+    },
+  )
+  await page.getByRole('button', { name: 'Edit with AI' }).click()
+  await clickInPreview(page, frame.getByText('Warm bread all day'))
+  const ask = page.getByRole('textbox', { name: 'Ask AI to make changes' })
+  await ask.fill('Add our weekend hours under this')
+  await shot('ai-edit-popover.png')
+  await ask.press('Enter')
+  await frame.getByText('Open weekends 8–2').waitFor({ timeout: 60_000 })
+  await until(() => seen.results.length === 1, 'the preview report')
+  const [edit] = seen.edits
+  expect(edit.baseCommit === sha(2), `the AI edit must build on the saved commit: ${edit.baseCommit}`)
+  expect(edit.target?.source?.path === 'src/App.tsx' && edit.target.source.line === 6, `the selection's place in the code: ${JSON.stringify(edit.target?.source)}`)
+  expect(!edit.target.html.includes('data-src'), 'the selection html must not carry the preview tags')
+  expect(seen.results[0].ok === true, `the preview must report ok: ${JSON.stringify(seen.results[0])}`)
+  await chatSays('Added the weekend hours.')
+  await page.getByRole('button', { name: 'Undo this change' }).last().waitFor()
+  await shot('ai-edit.png')
+  console.log('✓ AI edit: sent on the saved commit with the selection’s source, tried in the preview, reported ok, committed')
 
-  // mobile: chat and preview stack vertically
+  await page.getByRole('button', { name: 'Undo this change' }).last().click()
+  await chatSays('Undone.')
+  await frame.getByText('Open weekends 8–2').waitFor({ state: 'detached', timeout: 30_000 })
+  expect(seen.undos[0]?.commitSha === sha(3) && seen.undos[0].baseCommit === sha(3), `undo body: ${JSON.stringify(seen.undos[0])}`)
+  console.log('✓ undo: the AI change is undone with a new commit, and the preview follows')
+
+  // 4. A question from the AI, answered with an option; the change is escalated.
+  await page.getByRole('button', { name: 'Edit with AI' }).click()
+  editAnswers.push(
+    (body) => {
+      const id = runId()
+      site.thread.status = 'needs_input'
+      site.thread.run = { runId: id, mode: 'edit', instruction: body.instruction, target: null, question: COLOUR_QUESTION }
+      return ok({ status: 'needs_input', runId: id, question: COLOUR_QUESTION })
+    },
+    (body) => {
+      site.thread.status = 'idle'
+      site.thread.run = null
+      site.turn({ instruction: 'Change the button colours', outcome: 'escalated', reply: 'That needs a deeper change than AI edits make.', commitSha: null, questions: [{ question: COLOUR_QUESTION.question, answer: body.answer }] })
+      return ok({ status: 'escalated', runId: body.runId, reason: 'a deeper change' })
+    },
+  )
+  await say('Change the button colours')
+  await chatSays(COLOUR_QUESTION.question)
+  expect(seen.edits[1]?.target === null, 'chat text is about the whole site')
+  await shot('ai-question.png')
+  await page.getByRole('button', { name: '#2563eb' }).click()
+  await chatSays('That needs a deeper change than AI edits make.')
+  expect(seen.editAnswers[0]?.answer === '#2563eb' && seen.editAnswers[0].baseCommit === sha(4), `answer body: ${JSON.stringify(seen.editAnswers[0])}`)
+  console.log('✓ question: the AI asks, the option answers it on the current commit')
+
+  // 5. An AI change that breaks the preview is reported with the error, and taken back out of the preview.
+  editAnswers.push(
+    () => ok({ status: 'awaiting_result', runId: runId(), summary: 'Oops.', files: { 'src/App.tsx': 'export function App() {\n  return (<main>\n' } }),
+    () => fail(502, 'ai_edit_broke_preview', "The AI's change broke the preview, and it couldn't fix it. Nothing was changed."),
+  )
+  errors.expected = true
+  await say('Make the heading bigger')
+  await chatSays("The AI's change broke the preview", 90_000)
+  await page.getByText('Make the heading bigger', { exact: true }).waitFor()
+  const broken = seen.results.at(-1)
+  expect(broken.ok === false && broken.error?.message, `the broken preview must be reported: ${JSON.stringify(broken)}`)
+  await frame.getByRole('heading', { name: 'Crumb Bakery' }).waitFor({ timeout: 60_000 })
+  await page.waitForTimeout(1_000)
+  errors.expected = false
+  console.log(`✓ broken preview: reported (${broken.error.message.slice(0, 60)}…), and the preview is back to the site`)
+
+  // 6. The code: editable, makable's own files read-only.
+  await page.getByRole('radio', { name: 'Code' }).click()
+  await page.getByText('Editing', { exact: true }).waitFor({ timeout: 60_000 })
+  await page.locator('.monaco-editor').first().click()
+  await page.keyboard.press('Meta+ArrowDown')
+  await page.keyboard.type('// edited by hand\n')
+  await page.getByText('1 unsaved').waitFor()
+  await page.getByRole('button', { name: 'manifest.json' }).click()
+  await page.getByText('Read-only', { exact: true }).waitFor()
+  await shot('code-view.png')
+  console.log('✓ code view: edits count as unsaved; makable’s files are read-only')
+  await page.getByRole('radio', { name: 'Preview' }).click()
+
+  // 7. Publish to GitHub Pages: the repo is made public with the user's OK, the edits saved first.
+  await page.getByRole('button', { name: 'Publish', exact: true }).first().click()
+  await chatSays('Where should I publish your site?')
+  await page.getByRole('button', { name: 'GitHub Pages', exact: true }).last().click()
+  await chatSays('https://octocat.github.io/crumb-bakery/')
+  await page.getByRole('button', { name: 'Make it public and publish' }).click()
+  await chatSays('Your site is live at https://octocat.github.io/crumb-bakery/', 60_000)
+  const [published] = seen.publishes
+  expect(published.makePublic === true && published.target === 'github-pages', `publish body: ${JSON.stringify(published)}`)
+  expect(published.baseCommit === sha(5), `publish must build on the commit of the saved code edit: ${published.baseCommit}`)
+  expect(site.saves.at(-1).files['src/App.tsx']?.includes('// edited by hand'), 'the code edit must be saved before publishing')
+  expect(seen.statusSince.every((since) => since === '2026-10-15T12:00:00Z'), `status checks follow the deploy: ${seen.statusSince}`)
+  await shot('publish-live.png')
+  console.log('✓ publish: edits saved first, the repo made public with consent, the deploy followed until live')
+
+  // 8. A phone: the chat above the preview.
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.waitForTimeout(800)
-  await shot('builder-mobile.png')
+  await page.waitForTimeout(500)
+  await shot('workspace-mobile.png')
   await page.setViewportSize({ width: 1280, height: 900 })
 
-  // Export/Import are hidden in the header for now (builder-page.tsx); these steps run once they're back.
-  const sessionUi = (await page.getByRole('button', { name: /^Export/ }).count()) > 0
-  let sessionPath, exportedMessages
-  if (sessionUi) {
-    // export: the session downloads as a file with the chat, the site draft and the AI history
-    const download = page.waitForEvent('download')
-    await page.getByRole('button', { name: /^Export/ }).click()
-    const exported = await download
-    if (!/^makable-session-octocat-\d{4}-\d{2}-\d{2}\.json$/.test(exported.suggestedFilename())) throw new Error(`unexpected export name ${exported.suggestedFilename()}`)
-    sessionPath = join(OUT_DIR, exported.suggestedFilename())
-    await exported.saveAs(sessionPath)
-    const session = JSON.parse(readFileSync(sessionPath, 'utf8'))
-    if (session.format !== 'makable-session' || session.login !== 'octocat' || !session.conversation.portfolio?.profile.headline) throw new Error('the exported session is missing its content')
-    exportedMessages = session.conversation.messages.length
-    console.log(`✓ session: exported ${exportedMessages} messages and the site draft`)
-  } else console.log('- session: export/import skipped (hidden in the header)')
+  // 9. A new device: the newest site opens by itself.
+  await page.evaluate(() => localStorage.removeItem('makable:site'))
+  await page.reload()
+  await frame.getByRole('heading', { name: 'Crumb Bakery' }).waitFor({ timeout: 90_000 })
+  console.log('✓ new device: the newest site opens from GitHub')
 
-  // start over: back to the greeting, preview closed
-  await page.getByRole('button', { name: 'Start over' }).click()
-  await page.getByRole('button', { name: 'I want a portfolio' }).waitFor()
-  if (await page.locator('iframe[title="Portfolio preview"]').count()) throw new Error('preview still open after start over')
-  console.log('✓ chat: start over')
+  // 10. A change left waiting for the preview check (the tab closed while it checked) is tried again on the next visit.
+  const waitingFiles = { 'src/App.tsx': site.files['src/App.tsx'].replace('Order now', 'Order online') }
+  site.thread.status = 'awaiting_result'
+  site.thread.run = { runId: runId(), mode: 'edit', instruction: 'Say order online', target: null, preview: { summary: 'Renamed the button.', files: waitingFiles } }
+  editAnswers.push((body) => {
+    site.thread.status = 'idle'
+    site.thread.run = null
+    const commitSha = site.commitChanges(waitingFiles)
+    site.turn({ instruction: 'Say order online', reply: 'Renamed the button.' })
+    return ok({ status: 'applied', runId: body.runId, summary: 'Renamed the button.', commitSha, files: waitingFiles })
+  })
+  const reports = seen.results.length
+  await page.reload()
+  await frame.getByText('Order online').waitFor({ timeout: 90_000 })
+  await until(() => seen.results.length === reports + 1, 'the resumed preview report')
+  expect(seen.results.at(-1).ok === true, `resumed report: ${JSON.stringify(seen.results.at(-1))}`)
+  await chatSays('Renamed the button.')
+  console.log('✓ resume: a change waiting for the preview check is tried and reported on the next visit')
 
-  if (sessionUi) {
-    // import: a broken file is refused; the exported file replaces the session after asking
-    const sessionInput = page.locator('input[type="file"][accept*="json"]')
-    await sessionInput.setInputFiles({ name: 'notes.json', mimeType: 'application/json', buffer: Buffer.from('{"hello":1}') })
-    await page.getByRole('alert').filter({ hasText: "That file isn't a makable session." }).waitFor()
-    await sessionInput.setInputFiles(sessionPath)
-    const confirm = page.getByRole('dialog', { name: 'Replace session' })
-    await confirm.getByText(`${exportedMessages} messages`).waitFor()
-    await shot('session-import.png')
-    await confirm.getByRole('button', { name: 'Cancel' }).click()
-    if (await page.locator('iframe[title="Portfolio preview"]').count()) throw new Error('cancel should leave the session alone')
-    await sessionInput.setInputFiles(sessionPath)
-    await confirm.getByRole('button', { name: 'Replace' }).click()
-    await assistantSays('Imported your session from')
-    await frame.getByText('static edited').first().waitFor({ timeout: 60000 })
-    console.log('✓ session: a broken file is refused; import asks, then brings back the chat and the site')
-    await page.getByRole('button', { name: 'Start over' }).click()
-    await page.getByRole('button', { name: 'I want a portfolio' }).waitFor()
-  }
-
-  // sign out: back to the landing page as a guest
-  await say('I want a portfolio')
-  await page.getByRole('group', { name: 'Templates' }).last().waitFor()
-  // Sign out lives in the account menu behind the avatar.
-  await page.getByRole('button', { name: 'Account menu' }).click()
-  const accountMenu = page.getByRole('menu')
-  await accountMenu.getByText('@octocat').waitFor()
-  await shot('account-menu.png')
-  await accountMenu.getByRole('menuitem', { name: 'Sign out' }).click()
-  await page.getByRole('button', { name: 'I want a portfolio' }).waitFor()
-  if (await page.getByRole('group', { name: 'Templates' }).count()) throw new Error("account's chat still shown after sign out")
-  console.log('✓ auth: signed out to the landing page')
-} catch (err) {
-  console.error('✗', err.message)
+  if (errors.length) throw new Error(`page errors:\n${errors.join('\n')}`)
+  console.log('✓ no page errors')
+} catch (e) {
   await shot('failure.png').catch(() => {})
+  console.error(`✗ ${e.message}`)
+  if (errors.length) console.error(errors.join('\n'))
   process.exitCode = 1
 } finally {
-  if (errors.length) {
-    console.error('page errors:', errors)
-    process.exitCode = 1
-  }
   await browser.close()
 }

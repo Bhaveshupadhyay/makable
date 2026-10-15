@@ -7,7 +7,7 @@ description: Add a new product feature to the makable builder SPA (apps/web) usi
 
 `CLAUDE.md` and `docs/implementation-plan.md` are the maintainer's private notes: gitignored and only present on their machine. Use them when they exist. In a fresh checkout, skip the steps that mention them and work from the tracked code, the feature `index.ts` files and the other skills.
 
-1. **Scope it.** Confirm the scope with the user. If `docs/implementation-plan.md` exists, find the feature there (sections §A–§C, roadmap §8). Build only what was asked. The user reviews one feature at a time. The product is chat-first: anything that collects input from the user is a step in the builder's reducer (`features/builder/lib/conversation.ts`), not a form.
+1. **Scope it.** Confirm the scope with the user. If `docs/implementation-plan.md` exists, find the feature there (sections §A–§C, roadmap §8). Build only what was asked. The user reviews one feature at a time. The product is chat-first: anything that collects input from the user happens in the chat (the AI's questions, or a pure reducer like publishing's `features/builder/lib/publish-flow.ts`), not a form.
 2. **Create the folder** `apps/web/src/features/<kebab-name>/` with only the subfolders you need:
    - `api/`: network calls. Backend (`makable-backend`, `/api/v1`): `backendFetch` from `@/shared/lib/api-client` (unwraps the envelope, refreshes the session on a 401). Record any new endpoint in `CLAUDE.md` (if present) under "Backend API", and in the PR description.
    - `hooks/`: TanStack Query hooks (`queryKey` arrays start with the feature name).
