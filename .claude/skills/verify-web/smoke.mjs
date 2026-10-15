@@ -82,11 +82,11 @@ async function expectVisualEdit(page, frame, label) {
 const shot = (name, fullPage = false) => page.screenshot({ path: join(OUT_DIR, name), fullPage })
 
 try {
-  // guest: the chat is the first page, no sign-in wall (old /login links land there too)
+  // guest: the landing page, signed out (old /login links land there too)
   await page.goto(`${BASE_URL}/login`)
   await page.waitForURL((url) => url.pathname === '/')
   if (await page.getByRole('button', { name: 'Account menu' }).count()) throw new Error('expected a guest session')
-  console.log('✓ auth: guests land on the chat without signing in')
+  console.log('✓ auth: guests land on the landing page')
 
   // chat: start from a clean conversation
   // header: About page with the animated footer logo, then back to the builder
@@ -98,20 +98,36 @@ try {
   await page.getByRole('contentinfo').getByRole('link', { name: 'Builder' }).click()
   console.log('✓ site: About page and the footer logo animation')
 
-  // A new chat is the landing page (prompt box, no Start over); a chat in progress gets reset.
-  const startOver = page.getByRole('button', { name: 'Start over' })
-  await startOver.or(page.getByRole('button', { name: 'I want a portfolio' })).first().waitFor()
-  if (await startOver.isVisible()) await startOver.click()
+  // Building needs GitHub: clicking or typing into the prompt box asks a guest to sign in, and nothing is typed.
   const composer = page.getByRole('textbox', { name: 'Message' })
+  const signIn = page.getByRole('dialog', { name: 'Sign in to start building' })
+  await page.getByRole('button', { name: 'I want a portfolio' }).waitFor()
+  await shot('chat-start.png')
+  await composer.click()
+  await signIn.waitFor()
+  await signIn.getByRole('link', { name: 'Create one for free' }).waitFor()
+  await shot('sign-in.png')
+  await signIn.getByRole('button', { name: 'Close' }).click()
+  await signIn.waitFor({ state: 'detached' })
+  await composer.focus()
+  await page.keyboard.press('h')
+  await signIn.waitFor()
+  await page.keyboard.press('Escape')
+  await signIn.waitFor({ state: 'detached' })
+  if ((await composer.inputValue()) !== '') throw new Error('a guest should not be able to type into the prompt box')
+  if (await page.getByRole('group', { name: 'Templates' }).count()) throw new Error('a guest should not start the chat')
+  // An idea picked before signing in is sent once they're back.
+  await page.getByRole('button', { name: 'I want a portfolio' }).click()
+  await signIn.getByRole('button', { name: 'Continue with GitHub' }).click()
+  await page.getByRole('button', { name: 'Account menu' }).waitFor()
+  await page.getByRole('group', { name: 'Templates' }).last().waitFor()
+  console.log('✓ auth: the prompt box asks guests to sign in; the idea they picked is sent after signing in')
   const say = async (text) => {
     await composer.fill(text)
     await composer.press('Enter')
   }
   const assistantSays = (text) => page.getByText(text).last().waitFor({ timeout: 30000 })
-  await shot('chat-start.png')
 
-  await page.getByRole('button', { name: 'I want a portfolio' }).click()
-  await page.getByRole('group', { name: 'Templates' }).last().waitFor()
   await page.getByRole('button', { name: 'Terminal template' }).last().click()
   console.log('✓ chat: landing prompt → template picker → template chosen')
 
@@ -127,17 +143,12 @@ try {
   // details, one question at a time
   await say('not a valid username!')
   await assistantSays("doesn't look like a GitHub username")
-  // Guests get no @login quick reply, so type it.
   await say('@octocat')
   await assistantSays('Found you')
   // "Edit with AI" is in the chat's quick replies (first) and the preview toolbar (last).
   const aiEditChat = () => page.getByRole('button', { name: 'Edit with AI' }).first()
   const aiEditToolbar = page.getByRole('button', { name: 'Edit with AI' }).last()
   if ((await page.getByRole('button', { name: 'Edit with AI' }).count()) !== 2) throw new Error('expected Edit with AI in the chat and the toolbar')
-  // Mid-flow from the toolbar: guests are asked to connect GitHub, and the headline question stays open.
-  await aiEditToolbar.click()
-  await assistantSays('connect it first')
-  console.log('✓ AI edit: toolbar button asks a guest to connect GitHub mid-flow')
   await say('Smoke test headline')
   await frame.getByText('Smoke test headline').waitFor({ timeout: 30000 })
   await page.getByRole('button', { name: /^(Keep it|Skip)$/ }).click()
@@ -149,19 +160,8 @@ try {
   await frame.getByText('smoke@example.com').waitFor({ timeout: 30000 })
   console.log('✓ chat: GitHub lookup, headline, bio, email, links (with re-asks on bad input)')
 
-  // AI features need GitHub: the chat asks to connect, and the conversation survives the sign-in redirect
+  // AI edit: Edit with AI in the chat turns AI mode on; clicking a skill opens the AI box next to it
   await aiEditChat().click()
-  await assistantSays('connect it first')
-  const connect = page.getByRole('button', { name: 'Connect GitHub' }).last()
-  await connect.scrollIntoViewIfNeeded()
-  await shot('connect-github.png')
-  await connect.click()
-  await assistantSays('Connected as @octocat')
-  await page.getByRole('button', { name: 'Account menu' }).waitFor()
-  await frame.getByText('Smoke test headline').waitFor({ timeout: 60000 })
-  console.log('✓ auth: connect GitHub from the chat, conversation and preview kept')
-
-  // AI edit: signing in from the AI prompt turns AI mode on; clicking a skill opens the AI box next to it
   const aiBox = page.getByRole('textbox', { name: 'Ask AI to make changes' })
   const popover = page.getByRole('form', { name: 'Ask AI' })
   await page.getByText('Click anything in the preview to change it with AI').waitFor()
@@ -407,7 +407,7 @@ try {
     await page.getByRole('button', { name: 'I want a portfolio' }).waitFor()
   }
 
-  // sign out: back to a fresh guest chat
+  // sign out: back to the landing page as a guest
   await say('I want a portfolio')
   await page.getByRole('group', { name: 'Templates' }).last().waitFor()
   // Sign out lives in the account menu behind the avatar.
@@ -418,7 +418,7 @@ try {
   await accountMenu.getByRole('menuitem', { name: 'Sign out' }).click()
   await page.getByRole('button', { name: 'I want a portfolio' }).waitFor()
   if (await page.getByRole('group', { name: 'Templates' }).count()) throw new Error("account's chat still shown after sign out")
-  console.log('✓ auth: signed out to a fresh guest chat')
+  console.log('✓ auth: signed out to the landing page')
 } catch (err) {
   console.error('✗', err.message)
   await shot('failure.png').catch(() => {})

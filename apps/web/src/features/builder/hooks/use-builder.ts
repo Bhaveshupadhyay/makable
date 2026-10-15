@@ -1,12 +1,13 @@
 import type { SessionSnapshot, TemplateId } from '@makable/shared'
 import type { AiHistoryTurn } from '@/features/ai-edit'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { MOCK_AUTH, useSession } from '@/features/auth'
 import { useTemplateCatalog } from '@/features/templates'
 import type { SiteDraft } from '@/features/visual-edit'
 import { fetchGithubData } from '../api/github'
 import { type ChatContext, initialConversation, isAiRequest } from '../lib/conversation'
+import { takePendingPrompt } from '../lib/pending-prompt'
 import { awaitingToken, type PublishEvent } from '../lib/publish-flow'
 import { publishToken } from '../lib/publish-token'
 import { type SessionState, sessionFileName, toSnapshot } from '../lib/session-file'
@@ -83,6 +84,15 @@ export function useBuilder() {
     if (signInFor !== 'publish') setAiMode(true)
   }, [awaitingSignIn, signInFor, ctx, dispatch, setAiMode])
 
+  // A prompt a guest picked on the landing page before signing in: sent once they're back, if the chat hasn't started.
+  const pendingChecked = useRef(false)
+  useEffect(() => {
+    if (!ctx?.user || pendingChecked.current) return
+    pendingChecked.current = true
+    const text = takePendingPrompt()
+    if (text && !conversation.portfolio && conversation.messages.length === 1) dispatch({ type: 'user-text', text }, ctx)
+  }, [ctx, conversation, dispatch])
+
   // The conversation asks for a GitHub lookup by entering `github-loading`. This also resumes after a reload.
   const githubLogin = conversation.step === 'github-loading' ? conversation.githubLogin : undefined
   useEffect(() => {
@@ -108,6 +118,8 @@ export function useBuilder() {
      */
     status: owner === undefined ? 'loading' : session.isError && login !== null ? 'offline' : 'ready',
     retry: () => session.refetch(),
+    /** Building needs a GitHub account: guests only see the landing page. */
+    signedIn: !!user,
     busy: conversation.step === 'github-loading' || conversation.publish?.stage === 'running',
     send: (text: string) => {
       if (!ctx) return

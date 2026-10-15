@@ -42,8 +42,9 @@ export function BuilderPage() {
     )
   }
 
-  // Before the first message the home page is a landing page around the prompt box.
-  if (!portfolio && builder.conversation.messages.length === 1) {
+  // Before the first message the home page is a landing page around the prompt box. Guests always get it:
+  // building needs GitHub, so the prompt box asks them to sign in.
+  if (!builder.signedIn || (!portfolio && builder.conversation.messages.length === 1)) {
     return (
       <Landing>
         <HomePrompt builder={builder} />
