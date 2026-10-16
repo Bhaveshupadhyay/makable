@@ -83,7 +83,10 @@ function Studio({ login }: { login: string }) {
     pendingChecked.current = true
     const prompt = takePendingPrompt()
     if (!prompt) return
-    if (useSiteStore.getState().site) useSiteStore.getState().newSite()
+    const { site, dirty } = useSiteStore.getState()
+    // Starting another site drops the open one's unsaved edits: keep that site (its workspace saves them) instead.
+    if (site && Object.keys(dirty).length > 0) return
+    if (site) useSiteStore.getState().newSite()
     else useSiteStore.setState({ autoOpen: false })
     creation.start(prompt)
   }, [creation])

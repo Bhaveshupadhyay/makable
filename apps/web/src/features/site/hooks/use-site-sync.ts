@@ -193,7 +193,8 @@ function createSiteSync(onStatus: (status: SyncStatus) => void) {
     lastError = null
     const sent: Changes = { ...dirty }
     const body = { baseCommit: commitSha, ...savePlan(sent) }
-    const keepalive = reason === 'close' && fitsKeepalive(saveBody(body))
+    // A hidden tab may be closing: the request has to outlive the page (the close save would wait behind it).
+    const keepalive = (reason === 'close' || reason === 'hidden') && fitsKeepalive(saveBody(body))
     set({ state: 'saving' })
     try {
       const saved = await saveFiles(projectId, body, { keepalive })

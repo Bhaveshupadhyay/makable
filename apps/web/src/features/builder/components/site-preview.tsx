@@ -47,8 +47,9 @@ const readOnlyReason = (path: string) => (RESERVED_PATH.test(path) ? 'makable ke
 /** Live preview of the site with click-to-edit text, AI edits on a selected element, and the code. */
 export function SitePreview({ ai, shown, files, modified, projectName, aiMode, setAiMode, onBridge }: SitePreviewProps) {
   const generation = useSiteStore((s) => s.generation)
-  const tagged = useTaggedFiles(shown)
-  const previewFiles = useDebouncedValue(tagged, PREVIEW_DELAY_MS)
+  // Debounced before tagging, so typing in the code parses (and caches) only the settled text.
+  const settled = useDebouncedValue(shown, PREVIEW_DELAY_MS)
+  const previewFiles = useTaggedFiles(settled)
   const preview = usePreviewEngine(previewFiles, { injectedScript: EDIT_SHIM })
   const previewError = preview.state.status === 'error' ? preview.state.error : null
   useEffect(() => {

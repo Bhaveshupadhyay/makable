@@ -156,11 +156,15 @@
     }
   }
 
-  /** Where the element is written in the code, from the nearest `data-src`. */
+  // `SAFE_REPO_PATH` from @makable/shared: the host refuses a selection whose source has any other path.
+  const SAFE_PATH = /^(?!.*(?:^|\/)\.{1,2}(?:\/|$))[\w.@-]+(?:\/[\w.@-]+)*$/
+
+  /** Where the element is written in the code, from the nearest `data-src` (null for a path the AI can't be sent). */
   function sourceOf(el) {
     const value = el.closest(`[${SRC}]`)?.getAttribute(SRC)
     const match = value && /^(.+):(\d+):(\d+)$/.exec(value)
-    return match ? { path: match[1].slice(0, 300), line: Number(match[2]), column: Number(match[3]) } : null
+    if (!match || match[1].length > 300 || !SAFE_PATH.test(match[1])) return null
+    return { path: match[1], line: Number(match[2]), column: Number(match[3]) }
   }
 
   function label(el) {

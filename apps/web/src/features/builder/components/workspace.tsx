@@ -58,7 +58,7 @@ export function Workspace({ login }: { login: string }) {
       </HeaderActions>
       <Group orientation={wide ? 'horizontal' : 'vertical'}>
         <Panel defaultSize={wide ? '34' : '45'} minSize={wide ? '320px' : '25'}>
-          <WorkspaceChat projectId={projectId} ai={ai} ctx={publishCtx} publish={publish} busy={ai.busy || publishing} />
+          <WorkspaceChat projectId={projectId} ai={ai} ctx={publishCtx} publish={publish} sync={sync} busy={ai.busy || publishing} />
         </Panel>
         <Separator className="bg-border transition-colors hover:bg-ring data-[separator=active]:bg-ring aria-[orientation=horizontal]:h-px aria-[orientation=vertical]:w-px" />
         <Panel minSize={wide ? '360px' : '25'}>
@@ -89,11 +89,12 @@ type WorkspaceChatProps = {
   ai: AiRun
   ctx: PublishContext
   publish: ReturnType<typeof usePublish>
+  sync: SiteSync
   busy: boolean
 }
 
 /** The site's chat: its AI thread and the browser's own messages; text goes to the AI, a question or publishing. */
-function WorkspaceChat({ projectId, ai, ctx, publish, busy }: WorkspaceChatProps) {
+function WorkspaceChat({ projectId, ai, ctx, publish, sync, busy }: WorkspaceChatProps) {
   const chat = useSiteChat(projectId)
   const update = useBuilderStore((s) => s.update)
   const markUndone = useBuilderStore((s) => s.markUndone)
@@ -140,7 +141,18 @@ function WorkspaceChat({ projectId, ai, ctx, publish, busy }: WorkspaceChatProps
 
   return (
     <ChatPanel
-      header={<SiteMenu disabled={busy} />}
+      header={
+        <SiteMenu
+          disabled={busy}
+          beforeSwitch={async () => {
+            if (Object.keys(useSiteStore.getState().dirty).length > 0) await sync.flush()
+          }}
+          onSwitchFailed={(e) => {
+            const reason = e instanceof Error ? e.message : "Couldn't save them."
+            useBuilderStore.getState().say(projectId, assistant(`Your edits aren't saved yet, so this site stays open. ${reason}`, { tone: 'error' }))
+          }}
+        />
+      }
       messages={messages}
       tail={
         <>

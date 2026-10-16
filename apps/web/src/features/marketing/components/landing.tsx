@@ -76,7 +76,7 @@ export function Landing({ children }: { children: ReactNode }) {
         <div className="relative isolate mx-auto max-w-6xl overflow-hidden rounded-3xl border bg-foreground px-6 py-14 text-center text-background">
           <div className="absolute -top-24 left-1/2 -z-10 size-96 -translate-x-1/2 rounded-full bg-[#FF3366]/40 blur-3xl" />
           <h2 className="text-3xl font-semibold tracking-tight">Ready to make yours?</h2>
-          <p className="mx-auto mt-3 max-w-md text-sm opacity-70">No sign-up needed to start. Connect GitHub when you want to publish.</p>
+          <p className="mx-auto mt-3 max-w-md text-sm opacity-70">Sign in with GitHub to start. Your site lives in a repo of your own.</p>
           <a
             href="#start"
             className="mt-8 inline-flex items-center gap-2 rounded-full bg-background px-5 py-2.5 text-sm font-medium text-foreground transition-transform hover:scale-[1.03]"

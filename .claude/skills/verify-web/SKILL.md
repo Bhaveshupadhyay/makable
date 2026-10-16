@@ -5,7 +5,7 @@ description: Run the makable builder SPA in a headless browser and smoke-test th
 
 # Smoke-test the builder UI in headless Chromium
 
-Playwright's Chromium is already cached at `~/Library/Caches/ms-playwright/chromium_headless_shell-*`. Don't add Playwright to the repo for this. Install `playwright-core` in the session scratchpad.
+Playwright's Chromium is already cached at `~/Library/Caches/ms-playwright/chromium_headless_shell-*` (`launch()` picks the newest arm64 Mac build; elsewhere set `CHROME_PATH`, or it uses Playwright's default). Don't add Playwright to the repo for this. Install `playwright-core` in the session scratchpad.
 
 Every builder flow needs a signed-in session and makable-backend (each site is a repo on the user's GitHub), so the
 scripts run the real SPA against a **scripted backend**: Playwright routes answer `/api/v1` (`fake-backend.mjs`: the

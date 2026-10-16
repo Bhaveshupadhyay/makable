@@ -18,7 +18,8 @@ export function Composer({ onSend, disabled, placeholder = 'Message makable…',
 
   function submit(e?: FormEvent) {
     e?.preventDefault()
-    if (!text.trim() || disabled) return
+    // While something runs (Stop is shown), the text stays in the box until it's over.
+    if (!text.trim() || disabled || onStop) return
     onSend(text)
     setText('')
   }

@@ -24,8 +24,8 @@ const PRINCIPLES = [
   },
   {
     icon: ShieldCheck,
-    title: 'No sign-up wall',
-    text: 'Start building as a guest. Connect GitHub only when you want AI edits, sync or publishing.',
+    title: 'Your GitHub, your code',
+    text: 'Sign in with GitHub to build: every site is a repo on your account, so the code stays yours.',
   },
 ]
 

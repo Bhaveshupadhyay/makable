@@ -1,7 +1,7 @@
 // A scripted makable-backend for the smoke tests: the real SPA runs against it through Playwright routes, so nothing
 // reaches GitHub, a model or a hosting platform. It knows one user and their sites (each a set of files at a commit);
 // each script adds its own routes on top (see `routeBackend`).
-import { readdirSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { chromium } from 'playwright-core'
@@ -112,14 +112,21 @@ export function siteAnswer(state, method, path, body) {
   return null
 }
 
+/**
+ * Headless Chromium: `CHROME_PATH` when set, else the newest cached headless shell on an arm64 Mac (Playwright's own
+ * lookup picks a build this machine doesn't have), else Playwright's default.
+ */
 export async function launch() {
+  if (process.env.CHROME_PATH) return chromium.launch({ executablePath: process.env.CHROME_PATH })
   const cache = join(homedir(), 'Library/Caches/ms-playwright')
-  const shellDir = readdirSync(cache)
-    .filter((d) => d.startsWith('chromium_headless_shell'))
-    .sort()
-    .at(-1)
-  const executablePath = join(cache, shellDir, 'chrome-headless-shell-mac-arm64/chrome-headless-shell')
-  return chromium.launch({ executablePath })
+  const shellDir = existsSync(cache)
+    ? readdirSync(cache)
+        .filter((d) => d.startsWith('chromium_headless_shell'))
+        .sort()
+        .at(-1)
+    : undefined
+  const executablePath = shellDir && join(cache, shellDir, 'chrome-headless-shell-mac-arm64/chrome-headless-shell')
+  return chromium.launch(executablePath && existsSync(executablePath) ? { executablePath } : {})
 }
 
 /** Sends `/api/v1` to `answer(method, path, body, query)`; anything it doesn't answer is a 404 from the fake. */
