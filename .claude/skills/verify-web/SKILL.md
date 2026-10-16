@@ -45,7 +45,7 @@ and links to Settings), adds a refused key, then a good one, chooses two models,
 the key is never on the page or in localStorage, picks a model in the AI box and checks it's sent, reloads, and checks a
 refused key falls back to makable default. Screenshots: `ai-needs-key.png`, `ai-settings-choose.png`, `ai-settings.png`, `ai-model-menu.png`.
 
-**Analytics:** start the dev server with `VITE_ANALYTICS_DEBUG=true VITE_MIXPANEL_TOKEN=smoke-test-token` to have
+**Analytics:** start the dev server with `VITE_ANALYTICS_DEBUG=true VITE_MIXPANEL_TOKEN=smoke-test-token VITE_MIXPANEL_LOCAL=true` to have
 `publish-smoke.mjs` and `ai-models-smoke.mjs` list the analytics events they saw and fail if a pasted token or API key
 appears in any of them. Mixpanel's requests are answered by Playwright, so nothing reaches Mixpanel.
 
