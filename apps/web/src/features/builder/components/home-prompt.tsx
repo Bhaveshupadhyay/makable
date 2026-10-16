@@ -1,5 +1,5 @@
 import { ArrowUpRight } from 'lucide-react'
-import { type ClipboardEvent, type KeyboardEvent, useState } from 'react'
+import { useState } from 'react'
 import { SignInDialog } from '@/features/auth'
 import { analytics } from '@/shared/lib/analytics'
 import { savePendingPrompt } from '../lib/pending-prompt'
@@ -7,11 +7,6 @@ import { Composer } from './composer'
 
 // Starting points: each one is sent as the prompt.
 const IDEAS = ['A portfolio for a product designer', 'A landing page for a neighbourhood bakery', 'A one-page resume for a data scientist']
-
-/** Keys that would type into the prompt box (Tab, arrows and shortcuts still work for guests). */
-function isTyping(e: KeyboardEvent) {
-  return (e.key.length === 1 || e.key === 'Enter') && !e.metaKey && !e.ctrlKey && !e.altKey
-}
 
 type HomePromptProps = {
   /** Signed in: the prompt starts building the site. */
@@ -21,8 +16,8 @@ type HomePromptProps = {
 }
 
 /**
- * The landing page's prompt box: the description of the site to build. Building needs GitHub, so a guest who clicks
- * or types into it, or picks an idea, is asked to sign in first; what they picked is sent once they're back.
+ * The landing page's prompt box: the description of the site to build. Building needs GitHub, so a guest can type but
+ * is asked to sign in when they send it (or pick an idea); what they asked for is sent once they're back.
  */
 export function HomePrompt({ signedIn, onStart, busy = false }: HomePromptProps) {
   const [signingIn, setSigningIn] = useState(false)
@@ -32,27 +27,17 @@ export function HomePrompt({ signedIn, onStart, busy = false }: HomePromptProps)
     if (!signingIn) analytics.track('github_sign_in_prompted', { reason: 'home' })
     setSigningIn(true)
   }
-  const start = signedIn ? onStart : (text: string) => askToSignIn(text)
-  // Mouse down is stopped so the box doesn't take focus (or open the keyboard on a phone) behind the dialog.
-  const guestGate = signedIn
-    ? {}
-    : {
-        onMouseDownCapture: (e: { preventDefault: () => void }) => e.preventDefault(),
-        onClickCapture: () => askToSignIn(),
-        onKeyDownCapture: (e: KeyboardEvent) => {
-          if (!isTyping(e)) return
-          e.preventDefault()
-          askToSignIn()
-        },
-        onPasteCapture: (e: ClipboardEvent) => {
-          e.preventDefault()
-          askToSignIn(e.clipboardData.getData('text').trim() || null)
-        },
+  // A guest's text stays in the box, so closing the dialog doesn't lose it.
+  const start = signedIn
+    ? onStart
+    : (text: string) => {
+        askToSignIn(text.trim())
+        return false as const
       }
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-4">
-      <div {...guestGate} className="rounded-3xl bg-linear-to-br from-[#FF2E63]/40 via-[#FF9500]/30 to-[#8B5CF6]/40 p-px shadow-lg shadow-[#FF3366]/10">
+      <div className="rounded-3xl bg-linear-to-br from-[#FF2E63]/40 via-[#FF9500]/30 to-[#8B5CF6]/40 p-px shadow-lg shadow-[#FF3366]/10">
         <Composer
           onSend={start}
           disabled={busy}

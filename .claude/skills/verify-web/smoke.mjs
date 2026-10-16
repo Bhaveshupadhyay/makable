@@ -125,16 +125,26 @@ const until = async (check, what, timeout = 60_000) => {
 }
 
 try {
-  // 0. A guest: the landing page's prompt box asks them to sign in, and nothing is sent.
+  // 0. A guest types freely; sending asks them to sign in, keeps the text for after sign-in, and sends nothing.
   site.signedIn = false
   await page.goto(BASE_URL)
-  await page.getByPlaceholder('Describe the site you want to build…').click()
+  const guestBox = page.getByPlaceholder('Describe the site you want to build…')
+  await guestBox.fill(PROMPT)
   const signIn = page.getByRole('dialog')
+  expect(!(await signIn.isVisible()), 'typing must not open the sign-in dialog')
+  await guestBox.press('Enter')
   await signIn.getByRole('button', { name: 'Continue with GitHub' }).waitFor()
   await shot('sign-in.png')
+  const pending = await page.evaluate(() => sessionStorage.getItem('makable:pending-prompt'))
+  expect(pending === PROMPT, `the prompt must wait for sign-in (saved ${JSON.stringify(pending)})`)
   await signIn.getByRole('button', { name: 'Close' }).click()
+  expect((await guestBox.inputValue()) === PROMPT, 'closing the dialog must keep the typed text')
+  await page.getByRole('button', { name: 'Send' }).click()
+  await signIn.getByRole('button', { name: 'Continue with GitHub' }).waitFor()
+  await signIn.getByRole('button', { name: 'Close' }).click()
+  await page.evaluate(() => sessionStorage.removeItem('makable:pending-prompt'))
   expect(seen.creates.length === 0, 'a guest must not start a creation')
-  console.log('✓ guest: the prompt box asks to sign in first')
+  console.log('✓ guest: types freely; Enter or Send asks to sign in and keeps the prompt')
   site.signedIn = true
 
   // 1. The landing page, signed in, with no sites: the prompt builds one.

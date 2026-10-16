@@ -4,7 +4,8 @@ import { cn } from '@/shared/lib/cn'
 import { Button } from '@/shared/ui/button'
 
 type ComposerProps = {
-  onSend: (text: string) => void
+  /** Returning `false` keeps the text in the box (it wasn't sent). */
+  onSend: (text: string) => void | false
   disabled?: boolean
   placeholder?: string
   /** While something runs: the button stops it instead of sending. */
@@ -20,8 +21,7 @@ export function Composer({ onSend, disabled, placeholder = 'Message makable…',
     e?.preventDefault()
     // While something runs (Stop is shown), the text stays in the box until it's over.
     if (!text.trim() || disabled || onStop) return
-    onSend(text)
-    setText('')
+    if (onSend(text) !== false) setText('')
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {

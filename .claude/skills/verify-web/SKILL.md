@@ -28,7 +28,7 @@ reaches GitHub, a model or a hosting platform. Test those by hand with the backe
 4. **Look at the screenshots** with the Read tool. Check the layout, not just the assertions.
 5. **Stop the dev server:** `pkill -f 'vite --port 5199'`.
 
-**`smoke.mjs`** (the builder): a guest's prompt box asks them to sign in; signed in with no sites, the landing prompt
+**`smoke.mjs`** (the builder): a guest can type in the prompt box, and Enter or Send asks them to sign in (the text kept in the box and for after sign-in); signed in with no sites, the landing prompt
 starts a creation (NDJSON stream), which asks for the name, then shows its progress and opens the site in the preview
 (elements tagged with `data-src`); Edit text patches the source and Save now commits it on the site's commit; an AI
 edit on a selected element goes out on the saved commit with the element's place in the code, is tried in the preview,
