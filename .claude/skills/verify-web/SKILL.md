@@ -5,7 +5,7 @@ description: Run the makable builder SPA in a headless browser and smoke-test th
 
 # Smoke-test the builder UI in headless Chromium
 
-Playwright's Chromium is already cached at `~/Library/Caches/ms-playwright/chromium_headless_shell-*` (`launch()` picks the newest arm64 Mac build; elsewhere set `CHROME_PATH`, or it uses Playwright's default). Don't add Playwright to the repo for this. Install `playwright-core` in the session scratchpad.
+The scripts use `playwright-core` (pinned, installed in the session scratchpad: don't add Playwright to the repo for this) and the headless Chromium shell built for that version, which its own `install` puts in Playwright's cache (`~/Library/Caches/ms-playwright/chromium_headless_shell-<revision>` on a Mac; it skips the download when that revision is there). Set `CHROME_PATH` to use another Chromium.
 
 Every builder flow needs a signed-in session and makable-backend (each site is a repo on the user's GitHub), so the
 scripts run the real SPA against a **scripted backend**: Playwright routes answer `/api/v1` (`fake-backend.mjs`: the
@@ -19,7 +19,8 @@ reaches GitHub, a model or a hosting platform. Test those by hand with the backe
    Wait until `curl -s localhost:5199` responds.
 2. **Set up the runner** (once per session):
    ```sh
-   cd <scratchpad> && echo '{}' > package.json && bun add playwright-core
+   cd <scratchpad> && echo '{}' > package.json && bun add playwright-core@1.64.1
+   bun x playwright-core install --only-shell chromium
    cp <repo>/.claude/skills/verify-web/*.mjs .
    ```
 3. **Run them:** `bun smoke.mjs`, `bun publish-smoke.mjs`, `bun ai-models-smoke.mjs` (env: `BASE_URL`, default

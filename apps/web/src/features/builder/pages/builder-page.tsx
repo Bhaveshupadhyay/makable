@@ -27,11 +27,12 @@ export function BuilderPage() {
   const owner = session.isPending ? undefined : (user?.login ?? null)
 
   // Only a confirmed session moves the site, so a server error can't hide an account's work. Another account on
-  // this browser starts fresh; what a guest had (nothing but a project id) is theirs once they sign in.
+  // this browser starts fresh; what a guest had (nothing but a project id) is theirs once they sign in. Signing out
+  // (or a session that ran out) keeps the site and its unsaved edits for when the same account comes back.
   useEffect(() => {
-    if (!session.isSuccess || login === owner) return
-    if (login === null && owner) claim(owner)
-    else reset(owner ?? null)
+    if (!session.isSuccess || !owner || login === owner) return
+    if (login === null) claim(owner)
+    else reset(owner)
   }, [session.isSuccess, login, owner, claim, reset])
 
   if (owner === undefined || (user && login !== owner)) return <Spinner />
