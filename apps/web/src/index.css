@@ -85,6 +85,30 @@
   animation: mk-aurora 18s ease-in-out infinite;
 }
 
+/* Landing headline's rotating words (features/marketing/components/rotating-word.tsx). */
+.mk-word-in {
+  animation: mk-word-in 0.35s 0.08s ease-out both;
+}
+
+.mk-word-out {
+  animation: mk-word-out 0.25s ease-in both;
+  pointer-events: none;
+}
+
+@keyframes mk-word-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.25em);
+  }
+}
+
+@keyframes mk-word-out {
+  to {
+    opacity: 0;
+    transform: translateY(-0.25em);
+  }
+}
+
 /* Footer logo (features/marketing/components/footer-logo.tsx). */
 @property --mk-x {
   syntax: '<percentage>';
@@ -202,7 +226,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .mk-word-out {
+    animation: none;
+    opacity: 0;
+  }
+
   .mk-aurora,
+  .mk-word-in,
   .mk-footer-logo[data-in-view] .mk-fold {
     animation: none;
   }

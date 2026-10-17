@@ -1,5 +1,7 @@
 import { ArrowRight, Code, GitBranch, KeyRound, MessageSquare, MousePointerClick, Rocket, Sparkles } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
+import { useMediaQuery } from '@/shared/hooks/use-media-query'
+import { RotatingWord } from './rotating-word'
 import { SiteFooter } from './site-footer'
 
 const STEPS = [
@@ -17,8 +19,20 @@ const FEATURES = [
   { icon: KeyRound, title: 'Bring your own model', text: 'Add your own AI keys and pick the model for every edit.' },
 ]
 
+/** The headline's first word, cycled: Build your website for free → Host your website for free. */
+const HEADLINE_VERBS = ['Build', 'Host']
+const BEAT_MS = 2000
+
 /** The home page before the chat starts. `children` is the prompt box that starts it. */
 export function Landing({ children }: { children: ReactNode }) {
+  const [beat, setBeat] = useState(0)
+  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
+  useEffect(() => {
+    if (reduceMotion) return
+    const timer = window.setInterval(() => setBeat((b) => (b + 1) % HEADLINE_VERBS.length), BEAT_MS)
+    return () => window.clearInterval(timer)
+  }, [reduceMotion])
+
   return (
     <div className="flex min-h-[calc(100svh-3.5rem)] flex-col">
       <section id="start" className="relative isolate overflow-hidden px-4 pt-20 pb-24 sm:pt-28">
@@ -29,12 +43,14 @@ export function Landing({ children }: { children: ReactNode }) {
             Open source · publishes from your own GitHub
           </span>
           <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-6xl">
-            Build your website{' '}
-            <span className="bg-linear-to-r from-[#FF2E63] via-[#FF7A1A] to-[#8B5CF6] bg-clip-text text-transparent">by chatting</span>
+            <span className="sr-only">Build and host your website for free</span>
+            <span aria-hidden>
+              <RotatingWord words={HEADLINE_VERBS} index={beat} /> your website{' '}
+              <span className="bg-linear-to-r from-[#FF2E63] via-[#FF7A1A] to-[#8B5CF6] bg-clip-text text-transparent">for free</span>
+            </span>
           </h1>
           <p className="mt-5 max-w-xl text-base text-pretty text-muted-foreground sm:text-lg">
-            Describe the site you want. makable writes it into a repo on your GitHub, and you change anything by chatting, clicking or
-            editing the code. Then publish it to the web.
+            Describe it. makable writes the code to your GitHub and publishes it.
           </p>
           <div className="mt-10 w-full">{children}</div>
         </div>
