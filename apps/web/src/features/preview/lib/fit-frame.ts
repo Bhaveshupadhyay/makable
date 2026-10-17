@@ -19,11 +19,14 @@ export function fitFrame(width: number, available: number, grow = false): { widt
  * devicePixelRatio drops by `scale`) instead of rendering big and being shrunk, which made WebGL sites
  * lag. Safari (WebKit, which every iOS browser uses) applies an iframe's zoom twice to its visible area,
  * so only part of the page shows; there it's a transform.
+ *
+ * The height fills the frame's box as drawn. Zoom doesn't scale a percentage height (only lengths), so
+ * it stays 100%; a transform shrinks the laid-out box, so that one is laid out 1/scale as tall.
  */
 export function frameScaleStyle(scale: number, userAgent: string): CSSProperties {
-  if (scale === 1) return {}
-  if (isWebKitOnly(userAgent)) return { transform: `scale(${scale})`, transformOrigin: '0 0' }
-  return { zoom: scale }
+  if (scale === 1) return { height: '100%' }
+  if (isWebKitOnly(userAgent)) return { height: `${100 / scale}%`, transform: `scale(${scale})`, transformOrigin: '0 0' }
+  return { height: '100%', zoom: scale }
 }
 
 function isWebKitOnly(userAgent: string) {

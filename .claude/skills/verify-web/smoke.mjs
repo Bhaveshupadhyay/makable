@@ -238,6 +238,15 @@ try {
   expect(tagged >= 3, `the preview's elements must carry data-src (found ${tagged})`)
   await shot('workspace.png')
   console.log(`✓ create: the site opens in the live preview, its elements tagged with their place in the code (${tagged})`)
+  // The page is drawn scaled down beside the chat; its viewport must end with its box, or the bottom of
+  // the site can't be scrolled into view.
+  const fit = await page.locator('iframe[title="Site preview"]').evaluate((f) => {
+    const box = f.parentElement.getBoundingClientRect()
+    const drawn = f.getBoundingClientRect()
+    return { scaled: drawn.width < f.offsetWidth, overflow: drawn.bottom - (box.bottom - 1) }
+  })
+  expect(fit.scaled && Math.abs(fit.overflow) <= 1, `the scaled preview must fill its box exactly: ${JSON.stringify(fit)}`)
+  console.log('✓ preview: a scaled-down page fills its box, so it scrolls to the bottom')
 
   // 2. Edit text in the preview: it changes the code, and Save now commits it.
   await page.getByRole('button', { name: 'Edit text' }).click()

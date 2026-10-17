@@ -72,7 +72,7 @@ export function PreviewPane({ preview: { iframeRef, state, refresh }, actions, b
           <iframe
             ref={iframeRef}
             title="Site preview"
-            style={{ width, height: `${100 / scale}%`, ...frameScaleStyle(scale, navigator.userAgent) }}
+            style={{ width, ...frameScaleStyle(scale, navigator.userAgent) }}
             className="block"
           />
           {overlay?.(scale)}

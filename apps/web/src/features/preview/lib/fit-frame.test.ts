@@ -29,13 +29,13 @@ const IOS_CHROME = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Apple
 const FIREFOX = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:143.0) Gecko/20100101 Firefox/143.0'
 
 test('draws a scaled page with zoom, except in WebKit, which zooms an iframe twice', () => {
-  expect(frameScaleStyle(0.5, CHROME)).toEqual({ zoom: 0.5 })
-  expect(frameScaleStyle(0.5, FIREFOX)).toEqual({ zoom: 0.5 })
-  expect(frameScaleStyle(0.5, SAFARI)).toEqual({ transform: 'scale(0.5)', transformOrigin: '0 0' })
-  expect(frameScaleStyle(0.5, IOS_CHROME)).toEqual({ transform: 'scale(0.5)', transformOrigin: '0 0' })
+  expect(frameScaleStyle(0.5, CHROME)).toEqual({ height: '100%', zoom: 0.5 })
+  expect(frameScaleStyle(0.5, FIREFOX)).toEqual({ height: '100%', zoom: 0.5 })
+  expect(frameScaleStyle(0.5, SAFARI)).toEqual({ height: '200%', transform: 'scale(0.5)', transformOrigin: '0 0' })
+  expect(frameScaleStyle(0.5, IOS_CHROME)).toEqual({ height: '200%', transform: 'scale(0.5)', transformOrigin: '0 0' })
 })
 
 test('a page at full size gets no scaling', () => {
-  expect(frameScaleStyle(1, SAFARI)).toEqual({})
-  expect(frameScaleStyle(1, CHROME)).toEqual({})
+  expect(frameScaleStyle(1, SAFARI)).toEqual({ height: '100%' })
+  expect(frameScaleStyle(1, CHROME)).toEqual({ height: '100%' })
 })
