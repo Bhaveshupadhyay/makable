@@ -6,7 +6,7 @@ import { savePendingPrompt } from '../lib/pending-prompt'
 import { Composer } from './composer'
 
 // Starting points: each one is sent as the prompt.
-const IDEAS = ['A portfolio for a product designer', 'A landing page for a neighbourhood bakery', 'A one-page resume for a data scientist']
+const IDEAS = ['A landing page for a neighbourhood bakery', 'A portfolio for a product designer', 'A one-page resume for a data scientist']
 
 type HomePromptProps = {
   /** Signed in: the prompt starts building the site. */
