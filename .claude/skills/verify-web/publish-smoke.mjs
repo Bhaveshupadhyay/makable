@@ -80,7 +80,7 @@ function answer(method, path, body, query) {
 const browser = await chromium.launch({ executablePath })
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
 // Analytics must never carry a token or key. Mixpanel's requests are answered here (start the dev server with
-// VITE_ANALYTICS_DEBUG=true, and optionally a dummy VITE_MIXPANEL_TOKEN, to check them).
+// VITE_ANALYTICS_DEBUG=true, and optionally a dummy VITE_MIXPANEL_TOKEN with VITE_MIXPANEL_LOCAL=true, to check them).
 const analyticsSeen = []
 const analyticsNames = new Set()
 // The console logger passes the event's properties as a separate argument, so read the arguments, not just the text.
