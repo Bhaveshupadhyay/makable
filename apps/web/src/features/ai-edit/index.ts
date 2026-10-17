@@ -1,4 +1,4 @@
-export type { AiThread, AiTurn } from './api/ai'
+export type { AiPausedRun, AiQuestionAnswer, AiThread, AiTurn } from './api/ai'
 export { answerCreate, createSite, dismissRun } from './api/ai'
 export { AiEditHint, AiEditPopover } from './components/ai-edit-popover'
 export { phaseText } from './lib/phase-text'

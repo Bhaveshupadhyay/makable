@@ -5,6 +5,7 @@ import { cn } from '@/shared/lib/cn'
 import { Button } from '@/shared/ui/button'
 import { MakableIcon } from '@/shared/ui/makable-logo'
 import type { ChatMessage as ChatMessageType } from '../lib/chat'
+import { Steps } from './steps'
 
 type ChatMessageProps = {
   message: ChatMessageType
@@ -36,6 +37,7 @@ export function ChatMessage({ message, onUndo, undoDisabled, children }: ChatMes
         <MakableIcon className="size-4" />
       </span>
       <div className="min-w-0 flex-1 space-y-3">
+        {!!message.steps?.length && <Steps steps={message.steps} />}
         <p className={cn('text-sm leading-relaxed break-words whitespace-pre-wrap', message.tone === 'error' && 'text-destructive')}>
           {linkify(message.text)}
           {message.settingsLink && (

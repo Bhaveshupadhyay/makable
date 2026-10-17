@@ -1,7 +1,7 @@
 import { type AiResult, type AiStreamEvent, aiCreateRequestSchema, MAX_PROMPT } from '@makable/shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
-import { type AiThread, answerCreate, createSite, errorMessage, threadKey } from '@/features/ai-edit'
+import { type AiPausedRun, type AiThread, answerCreate, createSite, errorMessage, threadKey } from '@/features/ai-edit'
 import { useSession } from '@/features/auth'
 import { useModelChoice, useModelRejected } from '@/features/ai-models'
 import { getSite, useSiteStore } from '@/features/site'
@@ -21,6 +21,8 @@ export type Creating = {
   steps: string[]
   /** Files written of those planned, while writing. */
   written: { done: number; total: number } | null
+  /** When it answers one of its questions: the paused run as it was, and what the user sent it (the chat keeps showing both). */
+  answering?: { run: AiPausedRun; sent: string }
 }
 
 /**
@@ -36,17 +38,25 @@ export function useCreateSite() {
   const [creating, setCreating] = useState<Creating | null>(null)
   const inFlight = useRef<AbortController | null>(null)
 
-  async function stream(projectId: string, prompt: string, call: (signal: AbortSignal, onEvent: (event: AiStreamEvent) => void) => Promise<AiResult>) {
+  async function stream(
+    projectId: string,
+    prompt: string,
+    call: (signal: AbortSignal, onEvent: (event: AiStreamEvent) => void) => Promise<AiResult>,
+    answering?: Creating['answering'],
+  ) {
     if (inFlight.current) return
     const controller = new AbortController()
     inFlight.current = controller
     const started = performance.now()
-    setCreating({ prompt, steps: [], written: null })
+    setCreating({ prompt, steps: [], written: null, answering })
+    // What it did, also for a creation that fails or is stopped: the message saying so keeps them.
+    let done: string[] = []
     const onEvent = (event: AiStreamEvent) => {
       if (event.type !== 'progress') return
+      if (done.at(-1) !== event.message) done = [...done, event.message]
       setCreating((c) => {
         if (!c) return c
-        const steps = c.steps.at(-1) === event.message ? c.steps : [...c.steps, event.message].slice(-8)
+        const steps = c.steps.at(-1) === event.message ? c.steps : [...c.steps, event.message]
         const written = event.stage === 'write' && event.total ? { done: event.done ?? 0, total: event.total } : c.written
         return { ...c, steps, written }
       })
@@ -61,17 +71,17 @@ export function useCreateSite() {
       const say = useBuilderStore.getState().say
       if (controller.signal.aborted) {
         say(projectId, user(prompt))
-        say(projectId, assistant('Stopped. Nothing was built.', { replies: [TRY_AGAIN] }))
+        say(projectId, assistant('Stopped. Nothing was built.', { replies: [TRY_AGAIN], steps: done }))
         return
       }
       const code = e instanceof ApiError ? (e.code ?? null) : null
       analytics.track('site_create_failed', { code, message: errorMessage(e) })
       if (code && MODEL_ERRORS.has(code)) void modelRejected(choice, code)
       say(projectId, user(prompt))
-      say(projectId, assistant(errorMessage(e), { tone: 'error', replies: [TRY_AGAIN] }))
+      say(projectId, assistant(errorMessage(e), { tone: 'error', replies: [TRY_AGAIN], steps: done }))
     } finally {
       if (inFlight.current === controller) inFlight.current = null
-      // The thread has the name question, or the finished creation.
+      // The thread has the next question, or the finished creation.
       await queryClient.invalidateQueries({ queryKey: threadKey(login, projectId) })
       // A Stop once the commit had started still builds the site: the thread has it, so open it.
       const thread = queryClient.getQueryData<AiThread>(threadKey(login, projectId))
@@ -96,12 +106,16 @@ export function useCreateSite() {
     return true
   }
 
-  /** Answers the creation's question (the site's name). */
-  function answer(runId: string, prompt: string, text: string) {
+  /** Answers the creation's question (the site's name, or one about the site); with `chat`, sends a message about it instead. */
+  function answer(run: AiPausedRun, text: string, { chat = false }: { chat?: boolean } = {}) {
     if (inFlight.current || !text.trim()) return
     const { projectId } = useSiteStore.getState()
-    analytics.track('ai_question_answered', { question: 'project_name', answer: text, option: false })
-    void stream(projectId, prompt, (signal, onEvent) => answerCreate(projectId, { runId, answer: text.trim() }, onEvent, signal))
+    const asked = run.question?.kind ?? 'project_name'
+    if (chat) analytics.track('ai_question_chatted', { question: asked, message: text })
+    else analytics.track('ai_question_answered', { question: asked, answer: text, option: run.question?.options.includes(text) ?? false })
+    const call = (signal: AbortSignal, onEvent: (event: AiStreamEvent) => void) =>
+      answerCreate(projectId, { runId: run.runId, answer: text.trim(), chat }, onEvent, signal)
+    void stream(projectId, run.instruction, call, { run, sent: text.trim() })
   }
 
   function stop() {

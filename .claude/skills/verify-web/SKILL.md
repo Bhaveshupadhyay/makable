@@ -29,14 +29,14 @@ reaches GitHub, a model or a hosting platform. Test those by hand with the backe
 5. **Stop the dev server:** `pkill -f 'vite --port 5199'`.
 
 **`smoke.mjs`** (the builder): a guest can type in the prompt box, and Enter or Send asks them to sign in (the text kept in the box and for after sign-in); signed in with no sites, the landing prompt
-starts a creation (NDJSON stream), which asks for the name, then shows its progress and opens the site in the preview
+starts a creation (NDJSON stream), which asks for the name ("Chat about this" sends a message about the question, the conversation staying on screen while it's sent, and the AI's reply asks again), then shows its progress and opens the site in the preview
 (elements tagged with `data-src`); Edit text patches the source and Save now commits it on the site's commit; an AI
 edit on a selected element goes out on the saved commit with the element's place in the code, is tried in the preview,
-reported ok and committed, then undone; an AI question is answered with an option; an AI change that breaks the preview
+reported ok and committed, then undone; an AI question is answered with an option (while a question waits, its answers take the composer's place); an AI change that breaks the preview
 is reported with the error and taken back out; the code view edits (unsaved count) and keeps makable's files read-only;
 GitHub Pages publishing asks before making the repo public, saves first and follows the deploy until live; a phone
 layout; and a new browser opens the newest site by itself. Screenshots: `landing.png`, `sign-in.png`,
-`create-name.png`, `workspace.png`, `ai-edit-popover.png`, `ai-edit.png`, `ai-question.png`, `code-view.png`,
+`create-brief.png`, `create-name.png`, `create-name-chat-open.png`, `create-name-chat-sending.png`, `create-name-chat.png`, `create-steps.png`, `workspace.png`, `ai-edit-popover.png`, `ai-edit.png`, `ai-question.png`, `code-view.png`,
 `publish-live.png`, `workspace-mobile.png`.
 
 **`publish-smoke.mjs`** (on an existing site): Vercel with a pasted token (sent on the site's commit, the deploy

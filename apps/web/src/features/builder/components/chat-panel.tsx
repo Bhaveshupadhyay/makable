@@ -15,6 +15,8 @@ type ChatPanelProps = {
   /** Under the last message (e.g. the token box). */
   latestExtra?: ReactNode
   onSend: (text: string) => void
+  /** In the composer's place while it's set (the answers to a question the AI asked); undefined shows the composer. */
+  footer?: ReactNode
   /** Quick replies of the latest message are offered while true. */
   repliesEnabled?: boolean
   composerDisabled?: boolean
@@ -26,13 +28,14 @@ type ChatPanelProps = {
   className?: string
 }
 
-/** The conversation: messages with quick replies, what's in progress, and the composer. */
+/** The conversation: messages with quick replies, what's in progress, and the composer (or what replaces it). */
 export function ChatPanel({
   header,
   messages,
   tail,
   latestExtra,
   onSend,
+  footer,
   repliesEnabled = true,
   composerDisabled,
   placeholder,
@@ -76,7 +79,7 @@ export function ChatPanel({
 
       <div className="shrink-0 px-4 pb-4">
         <div className="mx-auto max-w-2xl">
-          <Composer onSend={onSend} disabled={composerDisabled} placeholder={placeholder} onStop={onStop} />
+          {footer ?? <Composer onSend={onSend} disabled={composerDisabled} placeholder={placeholder} onStop={onStop} />}
         </div>
       </div>
     </div>

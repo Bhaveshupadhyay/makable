@@ -5,13 +5,13 @@ import { useSession } from '@/features/auth'
 import { useSiteStore } from '@/features/site'
 import type { CreateSite, Creating } from '../hooks/use-create-site'
 import { TRY_AGAIN } from '../hooks/use-create-site'
-import { buildChat, type ChatMessage as Message } from '../lib/chat'
+import { buildChat, type ChatMessage as Message, pausedRunChat } from '../lib/chat'
 import { useSiteChat } from '../store'
 import { ChatMessage } from './chat-message'
 import { ChatPanel } from './chat-panel'
 import { SiteMenu } from './site-menu'
 
-/** The chat while a site is being built from its prompt: progress, the name question, or why it stopped. */
+/** The chat while a site is being built from its prompt: progress, its questions (about the site, then its name), or why it stopped. */
 export function CreateView({ creation }: { creation: CreateSite }) {
   const login = useSession().data?.login
   const queryClient = useQueryClient()
@@ -23,9 +23,10 @@ export function CreateView({ creation }: { creation: CreateSite }) {
   const { creating } = creation
   const messages = buildChat(thread.data ?? null, chat)
 
-  function send(text: string) {
+  // `aboutQuestion`: a message about the question ("Chat about this"), not its answer.
+  function send(text: string, aboutQuestion = false) {
     if (creating) return
-    if (run && question) return creation.answer(run.runId, run.instruction, text)
+    if (run && question) return creation.answer(run, text, { chat: aboutQuestion })
     // "Try again" builds the last prompt that didn't make it.
     if (text === TRY_AGAIN) {
       const prompt = [...chat.messages].reverse().find((m) => m.role === 'user')?.text
@@ -45,22 +46,28 @@ export function CreateView({ creation }: { creation: CreateSite }) {
       header={<SiteMenu disabled={!!creating} />}
       messages={messages}
       repliesEnabled={!creating && !question}
-      onSend={send}
+      onSend={(text) => send(text)}
+      footer={
+        !creating && run && question ? (
+          <AnswerOptions
+            options={question.options}
+            onPick={(answer) => send(answer)}
+            typeLabel={question.kind === 'project_name' ? 'Type a name' : 'Type something else'}
+            onChat={(message) => send(message, true)}
+            onSkip={() => void cancel()}
+            skipLabel="Cancel"
+          />
+        ) : undefined
+      }
       onStop={creating ? creation.stop : undefined}
-      placeholder={question ? 'Type a name for your site' : 'Describe the site you want to build…'}
+      placeholder="Describe the site you want to build…"
       tail={
         creating ? (
           <Progress creating={creating} />
         ) : (
           run &&
-          question && (
-            <>
-              <ChatMessage message={asked(run.runId, run.instruction)} />
-              <ChatMessage message={{ id: `${run.runId}-question`, role: 'assistant', text: question.question, at: '' }}>
-                <AnswerOptions options={question.options} onPick={send} onSkip={() => void cancel()} skipLabel="Cancel" />
-              </ChatMessage>
-            </>
-          )
+          question &&
+          pausedRunChat(run).map((message) => <ChatMessage key={message.id} message={message} />)
         )
       }
     />
@@ -71,15 +78,19 @@ const asked = (id: string, text: string): Message => ({ id: `${id}-asked`, role:
 
 /** What the creation has done so far: its steps, the last one in progress. */
 function Progress({ creating }: { creating: Creating }) {
-  const { steps, written } = creating
+  const { steps, written, answering } = creating
+  // Answering a question: the conversation so far and what was just sent stay on screen.
+  const said = answering ? pausedRunChat(answering.run, answering.sent) : [asked('creating', creating.prompt)]
   return (
     <>
-      <ChatMessage message={asked('creating', creating.prompt)} />
+      {said.map((message) => (
+        <ChatMessage key={message.id} message={message} />
+      ))}
       <div className="space-y-1.5 pl-8 text-sm" role="status">
         {steps.length === 0 && (
           <p className="flex items-center gap-2 text-muted-foreground">
             <LoaderCircle className="size-3.5 animate-spin" />
-            Starting…
+            {answering ? 'Thinking…' : 'Starting…'}
           </p>
         )}
         {steps.map((step, i) => (

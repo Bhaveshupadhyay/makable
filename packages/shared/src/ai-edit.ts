@@ -81,8 +81,8 @@ export type AiQuestion = {
   question: string
   options: string[]
   allowFreeText: boolean
-  /** One of makable's own questions: the site's name, before it's created. */
-  kind?: 'project_name' | null
+  /** One of the create agent's questions, before the site is made: about the site (what kind it is...), or its name. */
+  kind?: 'project_name' | 'site_brief' | null
 }
 
 /** Only with the backend's `AI_DEBUG`: what the model got. */

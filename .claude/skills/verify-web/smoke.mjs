@@ -9,6 +9,8 @@ const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5199'
 const OUT_DIR = process.env.OUT_DIR ?? '.'
 const PROMPT = 'A site for my bakery, Crumb, with our opening hours'
 const NAME_QUESTION = { question: 'What should the site be called?', options: ['Crumb Bakery'], allowFreeText: true, kind: 'project_name' }
+const KIND_QUESTION = { question: 'What kind of site is it?', options: ['A landing page', 'An online shop'], allowFreeText: true, kind: 'site_brief' }
+const NAME_REPLY = "It becomes your site's title and its repository's name on your GitHub, so anything works. What should we call it?"
 const COLOUR_QUESTION = { question: 'Which colour should the buttons be?', options: ['#e11d48', '#2563eb'], allowFreeText: true }
 const WEEKEND = '<p className="mt-2 text-amber-800">Open weekends 8–2</p>'
 
@@ -26,26 +28,58 @@ function answer(method, path, body, query) {
     seen.creates.push(body)
     const id = runId()
     site.projectId = body.projectId
-    site.thread = { projectId: body.projectId, status: 'needs_input', turns: [], run: { runId: id, mode: 'create', instruction: body.prompt, target: null, question: NAME_QUESTION } }
+    site.thread = { projectId: body.projectId, status: 'needs_input', turns: [], run: { runId: id, mode: 'create', instruction: body.prompt, target: null, question: KIND_QUESTION, steps: ['Thinking about your site'] } }
     return ndjson([
-      { type: 'progress', stage: 'name', message: 'Thinking of a name' },
-      { type: 'result', data: { status: 'needs_input', runId: id, question: NAME_QUESTION } },
+      { type: 'progress', stage: 'brief', message: 'Thinking about your site' },
+      { type: 'result', data: { status: 'needs_input', runId: id, question: KIND_QUESTION } },
     ])
   }
   if (method === 'POST' && path === `/ai/create/${site.projectId}/answer`) {
     seen.answers.push(body)
+    if (body.chat) {
+      // "Chat about this": the AI replies and asks again; the thread keeps what was said.
+      const run = site.thread.run
+      run.questions = [...(run.questions ?? []), { question: run.question.question, answer: body.answer, chat: true }]
+      run.question = { ...NAME_QUESTION, question: NAME_REPLY }
+      const reply = ndjson([
+        { type: 'progress', stage: 'name', message: 'Reading your answer' },
+        { type: 'result', data: { status: 'needs_input', runId: body.runId, question: run.question } },
+      ])
+      // Held back a moment, so the script can see the chat while the answer is on its way.
+      return new Promise((resolve) => setTimeout(() => resolve(reply), 2_000))
+    }
+    // A question about the site, then the name, then the site.
+    const run = site.thread.run
+    if (run.question.kind === 'site_brief') {
+      run.questions = [...(run.questions ?? []), { question: run.question.question, answer: body.answer, steps: run.steps }]
+      run.question = NAME_QUESTION
+      run.steps = ['Thinking about your site']
+      return ndjson([
+        { type: 'progress', stage: 'brief', message: 'Thinking about your site' },
+        { type: 'result', data: { status: 'needs_input', runId: body.runId, question: NAME_QUESTION } },
+      ])
+    }
     site.create(site.projectId)
     site.thread.status = 'idle'
     site.thread.run = null
-    site.turn({ instruction: PROMPT, reply: 'Built Crumb Bakery: a warm landing page with your hours.', questions: [{ question: NAME_QUESTION.question, answer: body.answer }] })
-    return ndjson([
+    const built = [
       { type: 'progress', stage: 'setup', message: 'Creating the repository for Crumb Bakery on your GitHub' },
       { type: 'progress', stage: 'plan', message: 'Planning the site' },
       { type: 'progress', stage: 'write', message: 'Writing src/index.css', path: 'src/index.css', done: 0, total: 2 },
-      { type: 'ping' },
       { type: 'progress', stage: 'write', message: 'Writing src/App.tsx', path: 'src/App.tsx', done: 1, total: 2 },
       { type: 'progress', stage: 'check', message: 'Checking the code' },
       { type: 'progress', stage: 'commit', message: 'Saving the site to your GitHub' },
+    ]
+    site.turn({
+      instruction: PROMPT,
+      reply: 'Built Crumb Bakery: a warm landing page with your hours.',
+      questions: [...run.questions, { question: run.question.question, answer: body.answer, steps: run.steps }],
+      steps: built.map((e) => e.message),
+    })
+    return ndjson([
+      ...built.slice(0, 3),
+      { type: 'ping' },
+      ...built.slice(3),
       { type: 'result', data: { status: 'created', runId: body.runId, summary: 'Built it.', commitSha: site.commit, site: site.sites[0] } },
     ])
   }
@@ -153,15 +187,53 @@ try {
   await page.getByPlaceholder('Describe the site you want to build…').waitFor()
   await shot('landing.png')
   await say(PROMPT)
-  await chatSays(NAME_QUESTION.question)
+  // First a question about the site, before its name.
+  await chatSays(KIND_QUESTION.question)
   expect(seen.creates[0]?.prompt === PROMPT, `create body: ${JSON.stringify(seen.creates[0])}`)
+  await page.getByPlaceholder('Type something else…').waitFor()
+  await shot('create-brief.png')
+  await page.getByRole('button', { name: 'A landing page', exact: true }).click()
+  expect(seen.answers[0]?.answer === 'A landing page' && !seen.answers[0].chat, `brief answer body: ${JSON.stringify(seen.answers[0])}`)
+  await chatSays(NAME_QUESTION.question)
+  await page.getByPlaceholder('Type a name…').waitFor()
+  expect(await page.getByText('A landing page', { exact: true }).last().isVisible(), 'the answer about the site stays in the chat')
   await shot('create-name.png')
-  console.log('✓ create: the prompt starts a creation, which asks for the name')
+  console.log('✓ create: the prompt starts a creation, which asks about the site, then for the name')
+
+  // While a question waits, its answers take the composer's place.
+  expect((await page.getByRole('textbox', { name: 'Message' }).count()) === 0, 'the composer is hidden while the name is asked')
+  await page.getByRole('button', { name: 'Chat about this' }).click()
+  const chatBox = page.getByPlaceholder('Ask about this question…')
+  await chatBox.fill('What is the name for?')
+  await shot('create-name-chat-open.png')
+  await chatBox.press('Enter')
+  // While it's on its way, the conversation stays: the question and what was just sent.
+  await page.getByRole('button', { name: 'Stop' }).waitFor({ timeout: 1_500 })
+  for (const text of [PROMPT, NAME_QUESTION.question, 'What is the name for?']) {
+    expect(await page.getByText(text, { exact: true }).last().isVisible(), `"${text}" stays in the chat while the answer is sent`)
+  }
+  await shot('create-name-chat-sending.png')
+  await chatSays(NAME_REPLY)
+  await chatSays('What is the name for?')
+  expect(seen.answers[1]?.chat === true && seen.answers[1].answer === 'What is the name for?', `chat body: ${JSON.stringify(seen.answers[1])}`)
+  await shot('create-name-chat.png')
+  console.log('✓ create: "Chat about this" sends a message about the name question; the AI replies and asks again')
 
   await page.getByRole('button', { name: 'Crumb Bakery', exact: true }).click()
   await frame.getByRole('heading', { name: 'Crumb Bakery' }).waitFor({ timeout: 90_000 })
-  expect(seen.answers[0]?.answer === 'Crumb Bakery', `answer body: ${JSON.stringify(seen.answers[0])}`)
+  expect(seen.answers[2]?.answer === 'Crumb Bakery' && !seen.answers[2].chat, `answer body: ${JSON.stringify(seen.answers[2])}`)
   await chatSays('Built Crumb Bakery: a warm landing page with your hours.')
+  // What it did stays in the chat once it's done, collapsed above the reply.
+  const buildSteps = page.getByRole('button', { name: '6 steps' })
+  await buildSteps.waitFor()
+  expect((await buildSteps.getAttribute('aria-expanded')) === 'false', 'the steps start collapsed')
+  expect((await page.getByText('Planning the site', { exact: true }).count()) === 0, 'collapsed steps are hidden')
+  await buildSteps.click()
+  await page.getByText('Planning the site', { exact: true }).waitFor()
+  expect((await page.getByRole('button', { name: '1 step' }).count()) === 2, 'each question keeps the step before it')
+  await shot('create-steps.png')
+  await buildSteps.click()
+  console.log('✓ create: the steps stay in the chat after the build, collapsed, and open on a click')
   const tagged = await frame.locator('[data-src^="src/App.tsx:"]').count()
   expect(tagged >= 3, `the preview's elements must carry data-src (found ${tagged})`)
   await shot('workspace.png')
@@ -240,8 +312,10 @@ try {
   await chatSays(COLOUR_QUESTION.question)
   expect(seen.edits[1]?.target === null, 'chat text is about the whole site')
   await shot('ai-question.png')
+  expect((await page.getByRole('textbox', { name: 'Message' }).count()) === 0, 'the composer is hidden while the AI asks')
   await page.getByRole('button', { name: '#2563eb' }).click()
   await chatSays('That needs a deeper change than AI edits make.')
+  await page.getByRole('textbox', { name: 'Message' }).waitFor()
   expect(seen.editAnswers[0]?.answer === '#2563eb' && seen.editAnswers[0].baseCommit === sha(4), `answer body: ${JSON.stringify(seen.editAnswers[0])}`)
   console.log('✓ question: the AI asks, the option answers it on the current commit')
 

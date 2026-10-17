@@ -53,6 +53,7 @@ export type AnalyticsEvents = {
   ai_edit_stopped: { instruction: string; phase: string; duration_ms: number }
   ai_edit_undone: { commit_sha: string }
   ai_question_answered: { question: string; answer: string; option: boolean }
+  ai_question_chatted: { question: string; message: string }
 
   // Preview and manual editing
   preview_element_selected: { tag: string; text: string; source: string | null; section: string | null; selector: string }

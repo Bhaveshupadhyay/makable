@@ -7,7 +7,7 @@ import { useMediaQuery } from '@/shared/hooks/use-media-query'
 import { Button } from '@/shared/ui/button'
 import { HeaderActions } from '@/shared/ui/header-slot'
 import { usePublish } from '../hooks/use-publish'
-import { assistant, buildChat, emptyChat, user } from '../lib/chat'
+import { assistant, buildChat, emptyChat, pausedRunChat, user } from '../lib/chat'
 import { awaitingToken, dropStalePublish, PUBLISH_REQUEST, type PublishContext, publishText, startPublish, TARGETS } from '../lib/publish-flow'
 import { useBuilderStore, useSiteChat } from '../store'
 import { ChatMessage } from './chat-message'
@@ -124,17 +124,21 @@ function WorkspaceChat({ projectId, ai, ctx, publish, sync, busy }: WorkspaceCha
   if (ai.pending) {
     tail = (
       <>
-        <ChatMessage message={{ id: 'pending', role: 'user', text: ai.pending.instruction, caption: ai.pending.target, at: '' }} />
+        {ai.pending.answering ? (
+          // Answering a question: the conversation so far and what was just sent stay on screen.
+          pausedRunChat(ai.pending.answering.run, ai.pending.answering.sent).map((message) => <ChatMessage key={message.id} message={message} />)
+        ) : (
+          <ChatMessage message={{ id: 'pending', role: 'user', text: ai.pending.instruction, caption: ai.pending.target, at: '' }} />
+        )}
         <Status>{phaseText(ai.pending)}</Status>
       </>
     )
   } else if (question?.question) {
     tail = (
       <>
-        <ChatMessage message={{ id: `${question.runId}-asked`, role: 'user', text: question.instruction, caption: question.target, at: '' }} />
-        <ChatMessage message={{ id: `${question.runId}-question`, role: 'assistant', text: question.question.question, at: '' }}>
-          <AnswerOptions options={question.question.options} onPick={(option) => void ai.answer(option)} onSkip={() => void ai.skip()} />
-        </ChatMessage>
+        {pausedRunChat(question).map((message) => (
+          <ChatMessage key={message.id} message={message} />
+        ))}
       </>
     )
   }
@@ -164,9 +168,22 @@ function WorkspaceChat({ projectId, ai, ctx, publish, sync, busy }: WorkspaceCha
       latestExtra={flow?.stage === 'token' && <PublishTokenForm platform={TARGETS[flow.target ?? 'vercel'].name} onSubmit={publish.enterToken} />}
       repliesEnabled={!busy}
       onSend={send}
+      footer={
+        // A publish waiting for a token keeps the composer, which takes the token.
+        !ai.pending && question?.question && !awaitingToken(flow) ? (
+          <AnswerOptions
+            options={question.question.options}
+            onPick={(answer) => void ai.answer(answer)}
+            typeLabel={question.question.allowFreeText ? 'Type something else' : undefined}
+            onChat={(message) => void ai.answer(message, { chat: true })}
+            onSkip={() => void ai.skip()}
+            disabled={busy}
+          />
+        ) : undefined
+      }
       onStop={ai.busy ? ai.stop : undefined}
       composerDisabled={flow?.stage === 'running'}
-      placeholder={question?.question ? 'Type your answer' : 'Ask for a change to your site…'}
+      placeholder="Ask for a change to your site…"
       onUndo={(sha) => void undo(sha)}
       undoDisabled={busy}
     />

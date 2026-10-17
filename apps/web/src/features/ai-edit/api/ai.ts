@@ -11,10 +11,18 @@ export type AiTurn = {
   /** `applied`, `escalated`, `failed`, `cancelled`, `skipped`... (makable-backend `AiEditOutcome`). */
   outcome: string
   reply: string
-  questions: { question: string; answer: string }[]
+  questions: AiQuestionAnswer[]
+  /** What the AI did after the last question (a creation's progress), shown collapsed above the reply. */
+  steps?: string[]
   commitSha?: string | null
   createdAt: string
 }
+
+/**
+ * A question the AI asked and what the user said: its answer, or (`chat`) a message about it the AI replied to.
+ * `steps`: what the AI did before it asked (a creation's progress).
+ */
+export type AiQuestionAnswer = { question: string; answer: string; chat?: boolean; steps?: string[] }
 
 /** A run waiting for the user (its question) or for the preview (the edits to try). */
 export type AiPausedRun = {
@@ -23,6 +31,10 @@ export type AiPausedRun = {
   instruction: string
   target: string | null
   question?: AiQuestion | null
+  /** What was asked and said earlier in this run, before `question`. */
+  questions?: AiQuestionAnswer[]
+  /** What the AI did before it asked `question` (a creation's progress). */
+  steps?: string[]
   preview?: { summary: string; files: Record<string, string | null> } | null
 }
 
@@ -41,7 +53,7 @@ export function sendEdit(request: AiEditRequest, signal?: AbortSignal): Promise<
 
 export function answerEdit(
   projectId: string,
-  body: { runId: string; answer: string; baseCommit: string; screenshot?: string },
+  body: { runId: string; answer: string; baseCommit: string; screenshot?: string; chat?: boolean },
   signal?: AbortSignal,
 ): Promise<AiResult> {
   return backendFetch<AiResult>(`/ai/edit/${projectId}/answer`, json(body, signal))
@@ -73,7 +85,7 @@ export function createSite(request: AiCreateRequest, onEvent: (event: AiStreamEv
 /** Answers the creation's question (the site's name), streamed like `createSite`. */
 export function answerCreate(
   projectId: string,
-  body: { runId: string; answer: string },
+  body: { runId: string; answer: string; chat?: boolean },
   onEvent: (event: AiStreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<AiResult> {

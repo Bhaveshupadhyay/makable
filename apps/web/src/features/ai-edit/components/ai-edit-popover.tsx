@@ -104,7 +104,12 @@ export function AiEditPopover({ ai, target, anchor, scale = 1, onClear }: AiEdit
                 <MessageCircleQuestion className="mt-0.5 size-4 shrink-0 text-violet-600" />
                 {question}
               </p>
-              <AnswerOptions options={asked?.options ?? []} onPick={(option) => void submit(undefined, option)} onSkip={() => void ai.skip()} />
+              <AnswerOptions
+                options={asked?.options ?? []}
+                onPick={(option) => void submit(undefined, option)}
+                onChat={(message) => void ai.answer(message, { chat: true })}
+                onSkip={() => void ai.skip()}
+              />
             </div>
           )}
           {status !== 'ready' && !ai.busy ? (

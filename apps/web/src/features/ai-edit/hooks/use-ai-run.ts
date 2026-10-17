@@ -6,7 +6,7 @@ import { useModelChoice, useModelRejected } from '@/features/ai-models'
 import { undoChange, useSiteStore } from '@/features/site'
 import { analytics } from '@/shared/lib/analytics'
 import { ApiError } from '@/shared/lib/api-client'
-import { type AiThread, answerEdit, dismissRun, reportResult, sendEdit } from '../api/ai'
+import { type AiPausedRun, type AiThread, answerEdit, dismissRun, reportResult, sendEdit } from '../api/ai'
 import { type PreviewStatus, previewVerdict } from '../lib/preview-verdict'
 import { targetLabel } from '../lib/target-label'
 import { threadKey, useThread } from './use-thread'
@@ -22,6 +22,8 @@ export type AiPending = {
   target: string | null
   /** `thinking`: waiting for the AI. `checking`: its change is in the preview. `saving`: committing it. */
   phase: 'thinking' | 'checking' | 'saving'
+  /** When it answers a question: the paused run as it was, and what the user sent it (the chat keeps showing both). */
+  answering?: { run: AiPausedRun; sent: string }
 }
 
 type Deps = {
@@ -69,13 +71,19 @@ export function useAiRun(deps: Deps) {
   const refreshThread = () => queryClient.invalidateQueries({ queryKey: threadKey(login, projectId) })
 
   /** Runs one request (and its preview rounds) to the end. */
-  async function run(instruction: string, target: string | null, start: (signal: AbortSignal) => Promise<AiResult>, model: string) {
+  async function run(
+    instruction: string,
+    target: string | null,
+    start: (signal: AbortSignal) => Promise<AiResult>,
+    model: string,
+    answering?: AiPending['answering'],
+  ) {
     if (inFlight.current) return
     const controller = new AbortController()
     const started = performance.now()
     inFlight.current = { controller, phase: 'thinking', started, instruction, target }
     setError(null)
-    setPending({ instruction, target, phase: 'thinking' })
+    setPending({ instruction, target, phase: 'thinking', answering })
     const phase = (next: AiPending['phase']) => {
       if (inFlight.current?.controller === controller) inFlight.current.phase = next
       setPending((p) => p && { ...p, phase: next })
@@ -170,8 +178,8 @@ export function useAiRun(deps: Deps) {
     return true
   }
 
-  /** Answers the question the paused run asked. */
-  async function answer(text: string): Promise<boolean> {
+  /** Answers the question the paused run asked; with `chat`, sends a message about it instead (the AI replies and asks again). */
+  async function answer(text: string, { chat = false }: { chat?: boolean } = {}): Promise<boolean> {
     const paused = thread.data?.run
     if (inFlight.current || !paused?.question || paused.mode !== 'edit') return false
     let baseCommit: string
@@ -182,9 +190,11 @@ export function useAiRun(deps: Deps) {
       latest.current.note({ instruction: null, target: null, text: errorMessage(e), error: true })
       return false
     }
-    analytics.track('ai_question_answered', { question: paused.question.question, answer: text, option: paused.question.options.includes(text) })
+    if (chat) analytics.track('ai_question_chatted', { question: paused.question.question, message: text })
+    else analytics.track('ai_question_answered', { question: paused.question.question, answer: text, option: paused.question.options.includes(text) })
     const model = choice?.model ?? 'makable-default'
-    void run(paused.instruction, paused.target, (signal) => answerEdit(projectId, { runId: paused.runId, answer: text, baseCommit }, signal), model)
+    const answering = { run: paused, sent: text }
+    void run(paused.instruction, paused.target, (signal) => answerEdit(projectId, { runId: paused.runId, answer: text, baseCommit, chat }, signal), model, answering)
     return true
   }
 

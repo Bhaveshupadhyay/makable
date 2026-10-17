@@ -1,4 +1,4 @@
-import type { AiThread } from '@/features/ai-edit'
+import type { AiPausedRun, AiThread } from '@/features/ai-edit'
 import type { PublishFlow } from './publish-flow'
 
 // The chat beside the site: the site's AI thread from the server (requests, questions, what the AI did), with the
@@ -21,6 +21,8 @@ export type ChatMessage = {
   tone?: 'error'
   /** The error is fixed in Settings → AI models: link there. */
   settingsLink?: boolean
+  /** What the AI did before it said this (a creation's progress), shown collapsed above the text. */
+  steps?: string[]
 }
 
 /** The browser's own part of the chat, per site. */
@@ -58,7 +60,7 @@ export function buildChat(thread: AiThread | null, local: LocalChat, undone: rea
     const key = `turn-${i}-${at}`
     fromThread.push({ id: `${key}-asked`, role: 'user', text: turn.instruction, caption: turn.target, at })
     for (const [k, qa] of turn.questions.entries()) {
-      fromThread.push({ id: `${key}-q${k}`, role: 'assistant', text: qa.question, at })
+      fromThread.push({ id: `${key}-q${k}`, role: 'assistant', text: qa.question, at, steps: qa.steps })
       fromThread.push({ id: `${key}-a${k}`, role: 'user', text: qa.answer, at })
     }
     // The first turn is the site's creation: undoing it would leave the empty starter.
@@ -68,6 +70,7 @@ export function buildChat(thread: AiThread | null, local: LocalChat, undone: rea
       role: 'assistant',
       text: turn.reply || replyFor(turn.outcome),
       at,
+      steps: turn.steps,
       ...(undoable ? { undo: { commitSha: turn.commitSha!, done: undone.includes(turn.commitSha!) } } : {}),
     })
   }
@@ -84,4 +87,21 @@ function replyFor(outcome: string): string {
     default:
       return 'Nothing was changed.'
   }
+}
+
+/**
+ * A paused run as the chat shows it: the request, what was asked and said on the way (an answer that wasn't a name,
+ * a chat about the question), so the AI's reply reads as a reply, and its question; each question with what the AI
+ * did before it asked. `sent` is what the user just sent
+ * to it, while that's on its way: the conversation stays on screen until the thread has it.
+ */
+export function pausedRunChat(run: AiPausedRun, sent?: string): ChatMessage[] {
+  const messages: ChatMessage[] = [{ id: `${run.runId}-asked`, role: 'user', text: run.instruction, caption: run.target, at: '' }]
+  for (const [i, qa] of (run.questions ?? []).entries()) {
+    messages.push({ id: `${run.runId}-q${i}`, role: 'assistant', text: qa.question, at: '', steps: qa.steps })
+    messages.push({ id: `${run.runId}-a${i}`, role: 'user', text: qa.answer, at: '' })
+  }
+  if (run.question) messages.push({ id: `${run.runId}-question`, role: 'assistant', text: run.question.question, at: '', steps: run.steps })
+  if (sent) messages.push({ id: `${run.runId}-sent`, role: 'user', text: sent, at: '' })
+  return messages
 }
