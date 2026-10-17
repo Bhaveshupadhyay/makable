@@ -1,23 +1,14 @@
 import { LoaderCircle, Rocket } from 'lucide-react'
-import { useAiEditPending } from '@/features/ai-edit'
 import { Button } from '@/shared/ui/button'
-import type { Builder } from '../hooks/use-builder'
+import type { PublishStage } from '../lib/publish-flow'
 
 /** Publish in the app header: starts (or repeats) publishing in the chat. */
-export function PublishButton({ builder }: { builder: Pick<Builder, 'conversation' | 'publish'> }) {
-  const stage = builder.conversation.publish?.stage
+export function PublishButton({ stage, published, disabled, onPublish }: { stage: PublishStage | undefined; published: boolean; disabled?: boolean; onPublish: () => void }) {
   const working = stage === 'running' || stage === 'deploying'
-  // An AI answer is for the site as it was sent: publish after it lands.
-  const aiPending = useAiEditPending()
   const label = stage === 'running' ? 'Publishing…' : stage === 'deploying' ? 'Deploying…' : 'Publish'
 
   return (
-    <Button
-      size="sm"
-      title={builder.publish.published ? 'Publish your changes' : 'Publish your site'}
-      disabled={!builder.conversation.portfolio || stage === 'running' || aiPending}
-      onClick={builder.publish.start}
-    >
+    <Button size="sm" title={published ? 'Publish your changes' : 'Publish your site'} disabled={disabled || stage === 'running'} onClick={onPublish}>
       {working ? <LoaderCircle className="animate-spin" /> : <Rocket />}
       <span className="hidden sm:inline">{label}</span>
       <span className="sr-only sm:hidden">{label}</span>

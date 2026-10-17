@@ -21,4 +21,10 @@ export type AiKey = {
 export type AiKeyChecked = { key: AiKey; availableModels: string[] }
 
 /** One entry in the chat's model menu. `keyId` is null for makable's own model. */
-export type AiModelOption = { keyId: string | null; provider: AiProviderId | null; model: string }
+export type AiModelOption = {
+  keyId: string | null
+  provider: AiProviderId | null
+  model: string
+  /** The model reads pictures: AI edits send it one of the selected element. */
+  acceptsImages?: boolean
+}

@@ -1,2 +1,7 @@
+export type { AiPausedRun, AiQuestionAnswer, AiThread, AiTurn } from './api/ai'
+export { answerCreate, createSite, dismissRun } from './api/ai'
 export { AiEditHint, AiEditPopover } from './components/ai-edit-popover'
-export { type AiHistoryTurn, useAiEdit, useAiEditPending } from './hooks/use-ai-edit'
+export { phaseText } from './lib/phase-text'
+export { AnswerOptions } from './components/answer-options'
+export { type AiNote, type AiPending, type AiRun, errorMessage, useAiRun } from './hooks/use-ai-run'
+export { threadKey, useThread } from './hooks/use-thread'

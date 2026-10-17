@@ -1,12 +1,13 @@
 # makable
 
-An open-source AI website builder. The MVP turns a developer's GitHub profile into a portfolio site deployed to GitHub Pages.
+An open-source AI website builder. Describe a site and makable builds it as React + Tailwind code in a repo on your
+GitHub; change it by chatting, clicking text in the preview or editing the code, then publish it to GitHub Pages,
+Vercel, Cloudflare Pages or Netlify.
 
 ## Layout
 
 - `apps/web`: builder SPA (React 19, Vite, Tailwind v4, TanStack Query, React Router)
-- `packages/shared`: zod schemas shared across the stack (portfolio content)
-- `packages/templates/portfolio`: the portfolio site template deployed to users' repos
+- `packages/shared`: the AI request contract shared with makable-backend (zod schemas and types)
 
 ## Development
 
@@ -14,9 +15,12 @@ Requires [Bun](https://bun.sh).
 
 ```sh
 bun install
-cp apps/web/.env.example apps/web/.env.local   # optional: mock GitHub login
+cp apps/web/.env.example apps/web/.env.local   # optional
 bun run dev
 ```
+
+Building sites needs [makable-backend](https://github.com/Bhaveshupadhyay/makable-backend) running on port 8787 (the dev
+server proxies `/api` to it) and a GitHub sign-in: each site is a repo on the user's GitHub.
 
 ## Deploying (Cloudflare Workers)
 

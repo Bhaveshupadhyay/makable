@@ -1,11 +1,30 @@
+import { Crosshair, Undo2 } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { Link } from 'react-router'
+import { cn } from '@/shared/lib/cn'
+import { Button } from '@/shared/ui/button'
 import { MakableIcon } from '@/shared/ui/makable-logo'
-import type { ChatMessage as ChatMessageType } from '../lib/conversation'
+import type { ChatMessage as ChatMessageType } from '../lib/chat'
+import { Steps } from './steps'
 
-export function ChatMessage({ message, children }: { message: ChatMessageType; children?: ReactNode }) {
+type ChatMessageProps = {
+  message: ChatMessageType
+  /** Undoes an AI change; left out where changes can't be undone. */
+  onUndo?: (commitSha: string) => void
+  undoDisabled?: boolean
+  children?: ReactNode
+}
+
+export function ChatMessage({ message, onUndo, undoDisabled, children }: ChatMessageProps) {
   if (message.role === 'user') {
     return (
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-1">
+        {message.caption && (
+          <span className="flex max-w-[85%] items-center gap-1 truncate text-xs text-violet-700 dark:text-violet-300">
+            <Crosshair className="size-3 shrink-0" />
+            <span className="truncate">{message.caption}</span>
+          </span>
+        )}
         <p className="max-w-[85%] rounded-2xl rounded-br-sm bg-primary px-3.5 py-2 text-sm whitespace-pre-wrap text-primary-foreground">
           {message.text}
         </p>
@@ -18,7 +37,35 @@ export function ChatMessage({ message, children }: { message: ChatMessageType; c
         <MakableIcon className="size-4" />
       </span>
       <div className="min-w-0 flex-1 space-y-3">
-        <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{linkify(message.text)}</p>
+        {!!message.steps?.length && <Steps steps={message.steps} />}
+        <p className={cn('text-sm leading-relaxed break-words whitespace-pre-wrap', message.tone === 'error' && 'text-destructive')}>
+          {linkify(message.text)}
+          {message.settingsLink && (
+            <>
+              {' '}
+              <Link to="/settings" className="font-medium underline underline-offset-2">
+                Manage AI models
+              </Link>
+            </>
+          )}
+        </p>
+        {message.undo &&
+          onUndo &&
+          (message.undo.done ? (
+            <p className="text-xs text-muted-foreground">Undone.</p>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label="Undo this change"
+              className="rounded-full"
+              disabled={undoDisabled}
+              onClick={() => onUndo(message.undo!.commitSha)}
+            >
+              <Undo2 />
+              Undo
+            </Button>
+          ))}
         {children}
       </div>
     </div>

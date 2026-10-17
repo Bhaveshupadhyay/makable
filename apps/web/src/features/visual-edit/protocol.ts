@@ -9,7 +9,7 @@ export const SHIM_SOURCE = 'makable-shim'
 /** An element's box in the preview page's viewport (CSS pixels). */
 export type ElementRect = { x: number; y: number; width: number; height: number }
 
-/** `text`: click-to-edit copy. `select`: click any element to point an AI edit at it. */
+/** `text`: click-to-edit text written in the code. `select`: click any element to point an AI edit at it. */
 export type ShimMode = 'off' | 'text' | 'select'
 
 /** Host → shim. */
@@ -18,15 +18,20 @@ export type HostMessage =
   | { source: typeof HOST_SOURCE; type: 'clear-selection' }
   /** While locked (an AI request is pending), the page ignores clicks but keeps the selection. */
   | { source: typeof HOST_SOURCE; type: 'lock'; locked: boolean }
+  /** Asks for a picture of the selected element (answered with `capture` and the same `id`). */
+  | { source: typeof HOST_SOURCE; type: 'capture'; id: string }
 
 /** Shim → host. `ready` is sent on every page load so the host can resend the mode. */
 export type ShimMessage =
   | { source: typeof SHIM_SOURCE; type: 'ready' }
-  | { source: typeof SHIM_SOURCE; type: 'edit'; path: string; value: string }
+  /** New text for the element written at `src` (its `data-src`), which showed `oldText`. */
+  | { source: typeof SHIM_SOURCE; type: 'edit'; src: string; oldText: string; value: string }
   /** The element picked in select mode, or null when the selection is cleared. */
   | { source: typeof SHIM_SOURCE; type: 'select'; target: AiEditTarget | null; rect: ElementRect | null }
   /** The selected element moved (scroll, resize, re-render), or left the page (null). */
   | { source: typeof SHIM_SOURCE; type: 'rect'; rect: ElementRect | null }
+  /** The picture asked for: a data URL, or null when it couldn't be taken. */
+  | { source: typeof SHIM_SOURCE; type: 'capture'; id: string; dataUrl: string | null }
 
 /** Narrows untrusted `MessageEvent.data` to a shim message, or null. */
 export function parseShimMessage(data: unknown): ShimMessage | null {
@@ -34,8 +39,8 @@ export function parseShimMessage(data: unknown): ShimMessage | null {
   const msg = data as Record<string, unknown>
   if (msg.source !== SHIM_SOURCE) return null
   if (msg.type === 'ready') return { source: SHIM_SOURCE, type: 'ready' }
-  if (msg.type === 'edit' && typeof msg.path === 'string' && typeof msg.value === 'string') {
-    return { source: SHIM_SOURCE, type: 'edit', path: msg.path, value: msg.value }
+  if (msg.type === 'edit' && typeof msg.src === 'string' && typeof msg.oldText === 'string' && typeof msg.value === 'string') {
+    return { source: SHIM_SOURCE, type: 'edit', src: msg.src, oldText: msg.oldText, value: msg.value }
   }
   if (msg.type === 'select') {
     if (msg.target === null) return { source: SHIM_SOURCE, type: 'select', target: null, rect: null }
@@ -43,6 +48,9 @@ export function parseShimMessage(data: unknown): ShimMessage | null {
     return target.success ? { source: SHIM_SOURCE, type: 'select', target: target.data, rect: parseRect(msg.rect) } : null
   }
   if (msg.type === 'rect') return { source: SHIM_SOURCE, type: 'rect', rect: parseRect(msg.rect) }
+  if (msg.type === 'capture' && typeof msg.id === 'string') {
+    return { source: SHIM_SOURCE, type: 'capture', id: msg.id, dataUrl: typeof msg.dataUrl === 'string' ? msg.dataUrl : null }
+  }
   return null
 }
 

@@ -1,11 +1,12 @@
 import type { PublishResult, PublishTarget, WorkflowRun } from '../api/publish'
-import type { ChatMessage, Conversation } from './conversation'
+import { assistant, type ChatMessage, type LocalChat, user } from './chat'
 
-// Publishing, as part of the chat: pick a platform, then either paste its token (it's sent to the backend
-// once, never kept in the chat) or add it on GitHub yourself. A pure reducer like the rest of the
-// conversation; `usePublish` runs what a `running` stage asks for and reports back with events.
+// Publishing, as part of the chat: pick a platform, then either paste its token (it's sent to the backend once,
+// never kept in the chat) or add it on GitHub yourself. A pure reducer over the browser's own chat messages;
+// `usePublish` runs what a `running` stage asks for and reports back with events. The site is published from its
+// own repo.
 
-export type Published = { target: PublishTarget; repoName: string; siteUrl: string | null }
+export type Published = { target: PublishTarget; siteUrl: string | null }
 
 export type PublishStage =
   | 'target'
@@ -15,8 +16,6 @@ export type PublishStage =
   | 'running'
   | 'deploying'
   | 'secrets'
-  | 'overwrite'
-  | 'repo-name'
   | 'project-name'
   | 'account'
   | 'reconnect'
@@ -25,15 +24,15 @@ export type PublishStage =
 export type PublishFlow = {
   stage: PublishStage
   target?: PublishTarget
-  /** What a run does: commit the site and deploy it, or only run the deploy workflow again. */
+  /** What a run does: commit the deploy setup if it changed and deploy, or only run the deploy workflow again. */
   action?: 'publish' | 'deploy'
   /** The user pastes a token in the chat. usePublish keeps it in memory; it never enters the conversation. */
   paste?: boolean
-  repoName?: string
   projectName?: string
   accountId?: string
-  confirmOverwrite?: string
   accounts?: { id: string; name: string }[]
+  /** The user agreed to make the site's repo public (GitHub Pages needs it). */
+  makePublic?: boolean
   /** A new id for every run, so each one runs once. */
   runId?: string
   /** While deploying: when the deploy started (the backend's time, which finds its run) and where to watch it. */
@@ -53,8 +52,8 @@ export type PublishEvent =
   /** The deploy workflow finished, or null when it took too long to wait for. */
   | { type: 'deploy-finished'; run: WorkflowRun | null }
 
-/** What the publish flow needs from outside: who's signed in, the site's last publish, and the open step's replies. */
-export type PublishContext = { login: string | null; published: Published | null; resume: string[] | undefined }
+/** What the publish flow needs from outside: who's signed in, the site's repo and its last publish. */
+export type PublishContext = { login: string; repoName: string | null; published: Published | null }
 
 export const PUBLISH = 'Publish'
 export const CANCEL = 'Cancel'
@@ -62,7 +61,7 @@ const PASTE = 'Paste it here'
 const ON_GITHUB = "I'll add it on GitHub"
 const DEPLOY_NOW = 'Deploy now'
 const PASTE_INSTEAD = 'Paste a token instead'
-const OVERWRITE = 'Overwrite'
+const MAKE_PUBLIC = 'Make it public and publish'
 const TRY_AGAIN = 'Try again'
 const OTHER_PLATFORM = 'Pick another platform'
 export const PUBLISH_ELSEWHERE = 'Publish somewhere else'
@@ -84,19 +83,16 @@ const TARGET_IDS = Object.keys(TARGETS) as PublishTarget[]
 export const PUBLISH_REQUEST = /^(publish|deploy|go live|put (it|my site) (online|live))\b/i
 /** Asking for another platform than the last publish's. */
 const ELSEWHERE = /somewhere else|elsewhere|another (platform|host)|different (platform|host)/i
-const REPO_NAME = /^(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$/
 const PROJECT_NAME = /^[a-z0-9](?:[a-z0-9-]{0,56}[a-z0-9])?$/
 
 const id = () => crypto.randomUUID()
-const user = (text: string): ChatMessage => ({ id: id(), role: 'user', text })
-const assistant = (text: string, extra: Partial<ChatMessage> = {}): ChatMessage => ({ id: id(), role: 'assistant', text, ...extra })
 
-function say(state: Conversation, publish: PublishFlow | undefined, text: string, replies?: string[], extra: Partial<ChatMessage> = {}): Conversation {
+function say(state: LocalChat, publish: PublishFlow | undefined, text: string, replies?: string[], extra: Partial<ChatMessage> = {}): LocalChat {
   return { ...state, publish, messages: [...state.messages, assistant(text, { ...(replies?.length ? { replies } : {}), ...extra })] }
 }
 
 /** Starts a run of what `flow` describes. */
-function run(state: Conversation, flow: PublishFlow, text: string): Conversation {
+function run(state: LocalChat, flow: PublishFlow, text: string): LocalChat {
   return say(state, { ...flow, stage: 'running', action: flow.action ?? 'publish', runId: id() }, text)
 }
 
@@ -116,8 +112,8 @@ export function isPublishAnswer(flow: PublishFlow | undefined, text: string): bo
   return [TRY_AGAIN, CANCEL, OTHER_PLATFORM, PUBLISH_ELSEWHERE].some((r) => r.toLowerCase() === t) || PUBLISH_REQUEST.test(text.trim())
 }
 
-/** The conversation without a failed publish that other chat moved on from. */
-export function dropStalePublish(state: Conversation): Conversation {
+/** The chat without a failed publish that other chat moved on from. */
+export function dropStalePublish(state: LocalChat): LocalChat {
   return state.publish?.stage === 'failed' || state.publish?.stage === 'reconnect' ? { ...state, publish: undefined } : state
 }
 
@@ -126,56 +122,43 @@ export function awaitingToken(flow: PublishFlow | undefined): boolean {
   return flow?.stage === 'token'
 }
 
+/** Where GitHub Pages serves a repo. */
+export function pagesUrl(login: string, repoName: string | null): string {
+  const host = `${login.toLowerCase()}.github.io`
+  return !repoName || repoName.toLowerCase() === host ? `https://${host}/` : `https://${host}/${repoName}/`
+}
+
 /** The Publish button or a publish request in the chat. */
-export function startPublish(state: Conversation, ctx: PublishContext, said = PUBLISH): Conversation {
+export function startPublish(state: LocalChat, ctx: PublishContext, said = PUBLISH): LocalChat {
   const s = { ...state, messages: [...state.messages, user(said)] }
   if (state.publish?.stage === 'running' || state.publish?.stage === 'deploying') {
     return say(s, state.publish, "I'm already publishing your site. I'll tell you when it's done.")
   }
-  if (!ctx.login) {
-    // Repeated clicks don't stack sign-in prompts.
-    if (state.awaitingSignIn && state.signInFor === 'publish') return state
-    return say(
-      { ...s, awaitingSignIn: true, signInFor: 'publish' },
-      undefined,
-      'Publishing puts your site in a repo on your GitHub account, so connect it first. Everything you built so far stays here.',
-      ctx.resume,
-      { widget: 'connect-github' },
-    )
-  }
   if (ctx.published && !ELSEWHERE.test(said)) {
-    const { target, repoName } = ctx.published
-    return run(s, { stage: 'running', target, repoName }, `Publishing your changes to ${TARGETS[target].name}…`)
+    const { target } = ctx.published
+    return run(s, { stage: 'running', target }, `Publishing your changes to ${TARGETS[target].name}…`)
   }
   return askTarget(s)
 }
 
-/** After connecting GitHub to publish: carry on with the platform question. */
-export function publishAfterSignIn(state: Conversation, ctx: PublishContext): Conversation {
-  const connected = { ...state, awaitingSignIn: false, signInFor: undefined }
-  if (ctx.published) {
-    const { target, repoName } = ctx.published
-    return run(connected, { stage: 'running', target, repoName }, `Connected as @${ctx.login}. Publishing your changes to ${TARGETS[target].name}…`)
-  }
-  return askTarget(connected, `Connected as @${ctx.login}. `)
-}
-
-function askTarget(state: Conversation, lead = ''): Conversation {
+function askTarget(state: LocalChat, lead = ''): LocalChat {
   return say(state, { stage: 'target' }, `${lead}Where should I publish your site?`, [...TARGET_IDS.map((t) => TARGETS[t].name), CANCEL])
 }
 
-function chooseTarget(state: Conversation, target: PublishTarget, ctx: PublishContext): Conversation {
+function askPublic(state: LocalChat, ctx: PublishContext, lead = ''): LocalChat {
+  const repo = ctx.repoName ? `your site's repo, ${ctx.repoName},` : "your site's repo"
+  return say(
+    state,
+    { stage: 'confirm', target: 'github-pages' },
+    `${lead}GitHub Pages only serves public repos, so I'll make ${repo} public: its code will be public too. ` +
+      `Your site will be at ${pagesUrl(ctx.login, ctx.repoName)}`,
+    [MAKE_PUBLIC, CANCEL],
+  )
+}
+
+function chooseTarget(state: LocalChat, target: PublishTarget, ctx: PublishContext): LocalChat {
+  if (target === 'github-pages') return askPublic(state, ctx)
   const { name, secrets, tokenUrl, permission } = TARGETS[target]
-  if (target === 'github-pages') {
-    const login = (ctx.login ?? '').toLowerCase()
-    return say(
-      state,
-      { stage: 'confirm', target },
-      `I'll publish your site to https://${login}.github.io/ from a public repo, ${login}.github.io, on your GitHub. ` +
-        "GitHub Pages needs a public repo, so your site's code will be public too.",
-      [PUBLISH, CANCEL],
-    )
-  }
   const needs = permission ? ` with the ${permission} permission` : ''
   return say(
     state,
@@ -187,7 +170,7 @@ function chooseTarget(state: Conversation, target: PublishTarget, ctx: PublishCo
   )
 }
 
-function askToken(state: Conversation, flow: PublishFlow, lead = ''): Conversation {
+function askToken(state: LocalChat, flow: PublishFlow, lead = ''): LocalChat {
   const { name, tokenUrl } = TARGETS[flow.target ?? 'vercel']
   return say(
     state,
@@ -198,12 +181,12 @@ function askToken(state: Conversation, flow: PublishFlow, lead = ''): Conversati
 }
 
 /** Chat text while the publish flow waits for an answer. Null when the text isn't for it. */
-export function publishText(state: Conversation, text: string, ctx: PublishContext): Conversation | null {
+export function publishText(state: LocalChat, text: string, ctx: PublishContext): LocalChat | null {
   const flow = state.publish
   if (!flow || !isPublishAnswer(flow, text)) return null
   const is = (reply: string) => text.toLowerCase() === reply.toLowerCase()
   const s = { ...state, messages: [...state.messages, user(text)] }
-  if (is(CANCEL)) return say(s, undefined, "OK, I won't publish for now.", ctx.resume)
+  if (is(CANCEL)) return say(s, undefined, "OK, I won't publish for now.")
   if (is(OTHER_PLATFORM) || is(PUBLISH_ELSEWHERE)) return askTarget(s)
   const again = (lead: string) => say(s, flow, lead, s.messages.at(-2)?.replies)
 
@@ -214,20 +197,16 @@ export function publishText(state: Conversation, text: string, ctx: PublishConte
     }
     case 'token-mode':
       if (is(PASTE)) return askToken(s, { ...flow, action: 'publish' })
-      if (is(ON_GITHUB)) return run(s, { ...flow, paste: false, action: 'publish' }, 'Setting up your site repo…')
-      return again(`Paste the token here, or add it on GitHub yourself.`)
+      if (is(ON_GITHUB)) return run(s, { ...flow, paste: false, action: 'publish' }, 'Setting up the deploy…')
+      return again('Paste the token here, or add it on GitHub yourself.')
     case 'confirm':
-      return is(PUBLISH) ? run(s, { ...flow, action: 'publish' }, 'Publishing your site…') : again('Publish, or cancel?')
-    case 'overwrite':
-      return is(OVERWRITE) ? run(s, flow, 'Publishing over the changes on GitHub…') : again('Overwrite them, or cancel?')
+      return is(MAKE_PUBLIC) || is(PUBLISH)
+        ? run(s, { ...flow, action: 'publish', makePublic: true }, 'Publishing your site…')
+        : again('Make the repo public and publish, or cancel?')
     case 'secrets':
       if (is(DEPLOY_NOW)) return run(s, { ...flow, action: 'deploy', paste: false }, 'Starting the deploy…')
       if (is(PASTE_INSTEAD)) return askToken(s, { ...flow, action: 'deploy' })
       return again('Tell me to deploy once the secrets are added.')
-    case 'repo-name':
-      return REPO_NAME.test(text)
-        ? run(s, { ...flow, repoName: text, confirmOverwrite: undefined }, `Publishing to a repo named ${text}…`)
-        : again('A repo name can only have letters, numbers, dots, dashes and underscores. Try another.')
     case 'project-name': {
       const name = text.toLowerCase()
       return PROJECT_NAME.test(name)
@@ -249,15 +228,27 @@ export function publishText(state: Conversation, text: string, ctx: PublishConte
 }
 
 /** A token was entered in the token box. */
-export function tokenEntered(state: Conversation, last4: string): Conversation {
+export function tokenEntered(state: LocalChat, last4: string): LocalChat {
   const flow = state.publish
   if (flow?.stage !== 'token') return state
   const s = { ...state, messages: [...state.messages, user(`Token ending in ${last4}`)] }
   return run(s, { ...flow, paste: true }, flow.action === 'deploy' ? 'Saving the token and starting the deploy…' : 'Checking the token and publishing…')
 }
 
+/** The publish flow's part of the chat: what an event does to it. */
+export function reducePublish(state: LocalChat, event: PublishEvent, ctx: PublishContext): LocalChat {
+  switch (event.type) {
+    case 'publish':
+      return startPublish(state, ctx)
+    case 'publish-token':
+      return tokenEntered(state, event.last4)
+    default:
+      return publishOutcome(state, event, ctx)
+  }
+}
+
 /** What a run brought back. */
-export function publishOutcome(state: Conversation, event: Exclude<PublishEvent, { type: 'publish' | 'publish-token' }>, ctx: PublishContext): Conversation {
+function publishOutcome(state: LocalChat, event: Exclude<PublishEvent, { type: 'publish' | 'publish-token' }>, ctx: PublishContext): LocalChat {
   const flow = state.publish
   if (!flow) return state
   switch (event.type) {
@@ -272,10 +263,10 @@ export function publishOutcome(state: Conversation, event: Exclude<PublishEvent,
     case 'deploy-finished': {
       if (flow.stage !== 'deploying') return state
       const latest = event.run
-      if (!latest) return say(state, undefined, `It's taking longer than usual. Follow the deploy here: ${flow.actionsUrl}`, ctx.resume)
+      if (!latest) return say(state, undefined, `It's taking longer than usual. Follow the deploy here: ${flow.actionsUrl}`)
       if (latest.conclusion === 'success') {
         const where = flow.siteUrl ? ` at ${flow.siteUrl}` : ''
-        return say(state, undefined, `Your site is live${where}. Publish again anytime to update it.`, [...(ctx.resume ?? []), PUBLISH_ELSEWHERE])
+        return say(state, undefined, `Your site is live${where}. Publish again anytime to update it.`, [PUBLISH_ELSEWHERE])
       }
       // The code is on GitHub already: trying again only runs the deploy again.
       return say(
@@ -290,64 +281,38 @@ export function publishOutcome(state: Conversation, event: Exclude<PublishEvent,
   }
 }
 
-function published(state: Conversation, result: PublishResult, ctx: PublishContext): Conversation {
+function published(state: LocalChat, result: PublishResult, ctx: PublishContext): LocalChat {
   const { name, tokenUrl } = TARGETS[result.target]
-  const repoName = result.repoFullName.split('/')[1]
   switch (result.deploy) {
     case 'waiting_for_secrets':
       return say(
         state,
-        { stage: 'secrets', target: result.target, repoName },
-        `Your site's code is in ${result.repoUrl}. To deploy it to ${name}, add ${result.missingSecrets.length > 1 ? 'these repository secrets' : 'this repository secret'} ` +
+        { stage: 'secrets', target: result.target },
+        `Your site's deploy is set up in ${result.repoUrl}. To deploy it to ${name}, add ${result.missingSecrets.length > 1 ? 'these repository secrets' : 'this repository secret'} ` +
           `on GitHub: ${list(result.missingSecrets)}. Add ${result.missingSecrets.length > 1 ? 'them' : 'it'} here: ${result.secretsUrl}` +
           `${tokenUrl ? ` (make a token at ${tokenUrl})` : ''}. Then tell me to deploy.`,
         [DEPLOY_NOW, PASTE_INSTEAD, CANCEL],
       )
     case 'started': {
       const firstPages = result.target === 'github-pages' && !ctx.published ? ' The first GitHub Pages deploy can take a few extra minutes.' : ''
-      // Nothing new from the builder: publishing still deploys what's on GitHub (e.g. edits made there).
-      const lead = result.changed
-        ? `Published to ${name}! It's deploying now`
-        : `Nothing new here since your last publish, so I'm deploying what's on GitHub to ${name} again`
       return say(
         state,
-        {
-          stage: 'deploying',
-          target: result.target,
-          repoName,
-          since: result.deployStartedAt,
-          actionsUrl: result.actionsUrl,
-          siteUrl: result.siteUrl,
-        },
-        `${lead}, which usually takes a minute or two. I'll tell you when it's live.${firstPages}\n` +
+        { stage: 'deploying', target: result.target, since: result.deployStartedAt, actionsUrl: result.actionsUrl, siteUrl: result.siteUrl },
+        `Publishing to ${name}! It's deploying now, which usually takes a minute or two. I'll tell you when it's live.${firstPages}\n` +
           `Site: ${result.siteUrl}\nCode: ${result.repoUrl}\nDeploy log: ${result.actionsUrl}`,
       )
     }
   }
 }
 
-function failed(state: Conversation, flow: PublishFlow, { code, message, details }: { code: string | undefined; message: string; details?: unknown }, ctx: PublishContext): Conversation {
+function failed(state: LocalChat, flow: PublishFlow, { code, message, details }: { code: string | undefined; message: string; details?: unknown }, ctx: PublishContext): LocalChat {
   const target = flow.target ? TARGETS[flow.target].name : 'the platform'
-  const d = (details ?? {}) as {
-    headSha?: string
-    paths?: string[]
-    accounts?: { id: string; name: string }[]
-    missing?: string[]
-    secretsUrl?: string
-    repoName?: string
-  }
+  const d = (details ?? {}) as { accounts?: { id: string; name: string }[]; missing?: string[]; secretsUrl?: string }
   switch (code) {
-    case 'workspace_conflict':
-      return say(state, undefined, 'This chat was also changed on another device. Choose which version to keep from the cloud button at the top, then publish again.', ctx.resume)
-    case 'publish_changed_on_github':
-      return say(
-        state,
-        { ...flow, stage: 'overwrite', confirmOverwrite: d.headSha },
-        `Some of your site's files were changed on GitHub since you last published${d.paths?.length ? ` (${d.paths.join(', ')})` : ''}. Publishing will overwrite those changes.`,
-        [OVERWRITE, CANCEL],
-      )
-    case 'publish_repo_taken':
-      return say(state, { ...flow, stage: 'repo-name' }, `${message} What should I call the repo?`, [CANCEL])
+    case 'site_conflict':
+      return say(state, undefined, 'Your site was changed somewhere else. Choose which version to keep from the save button at the top, then publish again.')
+    case 'publish_pages_private':
+      return askPublic(state, ctx, "Your site's repo is private. ")
     case 'platform_project_taken':
       return say(state, { ...flow, stage: 'project-name' }, `That project name is taken on ${target}. What should I call the project?`, [CANCEL])
     case 'platform_token_invalid':
@@ -361,20 +326,21 @@ function failed(state: Conversation, flow: PublishFlow, { code, message, details
         `The repo doesn't have ${list(d.missing ?? [])} yet. Add ${(d.missing?.length ?? 0) > 1 ? 'them' : 'it'} here: ${d.secretsUrl}. Then tell me to deploy.`,
         [DEPLOY_NOW, PASTE_INSTEAD, CANCEL],
       )
-    case 'publish_deploy_not_started': {
-      // The code is on GitHub; only starting the deploy failed. "Deploy now" needs to know which repo.
-      const repoName = d.repoName ?? flow.repoName
-      return repoName
-        ? say(state, { ...flow, stage: 'secrets', action: 'deploy', paste: false, repoName }, message, [DEPLOY_NOW, CANCEL])
-        : say(state, { ...flow, stage: 'failed' }, message, [TRY_AGAIN, CANCEL])
-    }
+    case 'publish_deploy_not_started':
+      // The deploy is set up on GitHub; only starting it failed.
+      return say(state, { ...flow, stage: 'secrets', action: 'deploy', paste: false }, message, [DEPLOY_NOW, CANCEL])
     case 'token_lost':
       return askToken(state, flow, "I don't keep tokens after the page reloads. ")
     case 'github_missing_scope':
     case 'github_reconnect':
     case 'unauthorized':
-      return say(state, { ...flow, stage: 'reconnect' }, `${code === 'unauthorized' ? 'Your GitHub session expired.' : message} Connect GitHub again, then try again.`, [TRY_AGAIN, CANCEL])
-    case 'publish_pages_private':
+      return say(
+        state,
+        { ...flow, stage: 'reconnect' },
+        `${code === 'unauthorized' ? 'Your GitHub session expired.' : message} Connect GitHub again, then try again.`,
+        [TRY_AGAIN, CANCEL],
+        { widget: 'reconnect-github' },
+      )
     case 'publish_repo_archived':
     case 'github_pages_unavailable':
       return say(state, { ...flow, stage: 'failed' }, message, [OTHER_PLATFORM, CANCEL])

@@ -24,8 +24,8 @@ const PRINCIPLES = [
   },
   {
     icon: ShieldCheck,
-    title: 'No sign-up wall',
-    text: 'Start building as a guest. Connect GitHub only when you want AI edits, sync or publishing.',
+    title: 'Your GitHub, your code',
+    text: 'Sign in with GitHub to build: every site is a repo on your account, so the code stays yours.',
   },
 ]
 
@@ -39,8 +39,8 @@ export function AboutPage() {
           <MakableIcon className="mx-auto size-14" glow />
           <h1 className="mt-6 text-4xl font-semibold tracking-tight text-balance sm:text-5xl">A website builder that talks with you</h1>
           <p className="mt-5 text-base text-pretty text-muted-foreground sm:text-lg">
-            makable is an open-source, chat-first website builder, inspired by tools like Lovable and Bolt. It starts with what
-            every developer needs: a portfolio, built from your GitHub profile and published to the web in minutes.
+            makable is an open-source, chat-first website builder, inspired by tools like Lovable and Bolt. Describe a site and
+            it's built, in a repo on your own GitHub, and published to the web in minutes.
           </p>
         </div>
       </section>
@@ -53,9 +53,9 @@ export function AboutPage() {
             shouldn't mean handing your site to a platform you can't leave.
           </p>
           <p>
-            So makable keeps the conversation simple and the output yours: you chat, pick a template, click to edit, ask AI for
-            the rest, and publish real files to your own GitHub repository, then to GitHub Pages, Vercel, Cloudflare Pages or
-            Netlify.
+            So makable keeps the conversation simple and the output yours: you describe the site, click to edit, ask AI for the
+            rest, and every change is a commit in your own GitHub repository, published to GitHub Pages, Vercel, Cloudflare
+            Pages or Netlify.
           </p>
         </div>
       </section>

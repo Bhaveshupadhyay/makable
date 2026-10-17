@@ -27,7 +27,7 @@ export function ConnectGithub({ reconnect = false }: { reconnect?: boolean }) {
         <GithubIcon />
         {reconnect ? 'Connect GitHub again' : 'Connect GitHub'}
       </Button>
-      <p className="text-xs text-muted-foreground">We create a repo in your account and deploy it to GitHub Pages. Your code stays yours.</p>
+      <p className="text-xs text-muted-foreground">Your sites live in repos on your GitHub account. Your code stays yours.</p>
     </div>
   )
 }

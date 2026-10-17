@@ -1,17 +1,12 @@
 // Settings → AI models and the model menu in the AI box, end to end in the browser: the real SPA against a
-// scripted makable-backend (Playwright routes answer /api/v1). Run the dev server WITHOUT mock auth. See SKILL.md.
-import { readdirSync } from 'node:fs'
-import { homedir } from 'node:os'
+// scripted makable-backend (see fake-backend.mjs), on a site the user already has. Run the dev server WITHOUT mock
+// auth. See SKILL.md.
 import { join } from 'node:path'
-import { chromium } from 'playwright-core'
+import { clickInPreview, expect, fail, fakeSites, launch, ok, routeBackend, siteAnswer, watchErrors } from './fake-backend.mjs'
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5199'
 const OUT_DIR = process.env.OUT_DIR ?? '.'
-const cache = join(homedir(), 'Library/Caches/ms-playwright')
-const shellDir = readdirSync(cache).find((d) => d.startsWith('chromium_headless_shell'))
-const executablePath = join(cache, shellDir, 'chrome-headless-shell-mac-arm64/chrome-headless-shell')
 
-const USER = { id: 'u1', login: 'octocat', name: 'The Octocat', avatarUrl: 'https://github.com/octocat.png', role: 'user' }
 const GOOD_KEY = 'sk-proj-good-key-7f3a'
 const KEY_ID = '6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b'
 const AVAILABLE = ['gpt-4.1-mini', 'gpt-5', 'o4-mini']
@@ -22,38 +17,20 @@ const PROVIDERS = [
 
 // --- The fake backend ---
 // `makableModel: false` is a backend without AI_BASE_URL: users need their own key.
-// The preview may draw a wide page with CSS zoom (Desktop is 1280px, zoomed to fit the pane). Playwright's
-// clicks and boxes inside an iframe ignore that zoom, so measure and click with the real mouse instead.
-async function previewBox(page, locator) {
-  await locator.scrollIntoViewIfNeeded()
-  const r = await locator.evaluate((el) => {
-    const b = el.getBoundingClientRect()
-    return { x: b.x, y: b.y, width: b.width, height: b.height }
-  })
-  const f = await page.locator('iframe[title="Portfolio preview"]').evaluate((el) => {
-    const b = el.getBoundingClientRect()
-    const z = Number.parseFloat(getComputedStyle(el).zoom) || 1
-    return { x: b.x + el.clientLeft * z, y: b.y + el.clientTop * z, z }
-  })
-  return { x: f.x + r.x * f.z, y: f.y + r.y * f.z, width: r.width * f.z, height: r.height * f.z }
-}
-async function clickInPreview(page, locator) {
-  const b = await previewBox(page, locator)
-  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2)
-}
-
+const site = fakeSites()
 const backend = { makableModel: false, key: null, keyBodies: [], edits: [], editAnswers: [] }
-const ok = (data) => ({ status: 200, body: { success: true, data } })
-const fail = (status, code, message) => ({ status, body: { success: false, error: { code, message } } })
+let runs = 0
+/** An AI edit the backend escalates (the chat shows its turn). */
+const escalated = () => {
+  site.turn({ instruction: 'Make it bold', outcome: 'escalated', reply: 'That needs a deeper edit: the navbar too.', commitSha: null })
+  return ok({ status: 'escalated', runId: `00000000-0000-4000-8000-${String(++runs).padStart(12, '0')}`, reason: 'Needs the navbar too.' })
+}
 const options = () => [
   ...(backend.makableModel ? [{ keyId: null, provider: null, model: 'auto' }] : []),
   ...(backend.key?.status === 'valid' ? backend.key.models.map((model) => ({ keyId: KEY_ID, provider: 'openai', model })) : []),
 ]
 
 function answer(method, path, body) {
-  if (path === '/auth/session') return ok({ user: USER })
-  if (path === '/workspace/sessions/latest') return fail(404, 'workspace_session_not_found', 'No saved session on GitHub yet')
-  if (method === 'PUT' && path.startsWith('/workspace/sessions/')) return ok({ sha: 'a'.repeat(40), repoUrl: 'https://github.com/octocat/makable-workspace' })
   if (path === '/ai/providers') return ok(PROVIDERS)
   if (method === 'GET' && path === '/ai/keys') return ok(backend.key ? [backend.key] : [])
   if (method === 'GET' && path === '/ai/models') return ok(options())
@@ -70,14 +47,14 @@ function answer(method, path, body) {
   }
   if (method === 'POST' && path === '/ai/edit') {
     backend.edits.push(body)
-    const next = backend.editAnswers.shift() ?? ok({ tier: 2, reason: 'Needs the navbar too.' })
+    const next = backend.editAnswers.shift() ?? escalated()
     if (next.body.error?.code === 'ai_key_invalid') backend.key = { ...backend.key, status: 'invalid' }
     return next
   }
-  return fail(404, 'not_found', `fake backend: no route for ${method} ${path}`)
+  return siteAnswer(site, method, path, body)
 }
 
-const browser = await chromium.launch({ executablePath })
+const browser = await launch()
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
 // Analytics must never carry a token or key. Mixpanel's requests are answered here (start the dev server with
 // VITE_ANALYTICS_DEBUG=true, and optionally a dummy VITE_MIXPANEL_TOKEN with VITE_MIXPANEL_LOCAL=true, to check them).
@@ -118,38 +95,22 @@ process.on('beforeExit', async () => {
   console.log(leaked.length ? `✗ SECRET LEAKED to analytics: ${leaked}` : '✓ analytics: no token/key in any event')
   if (leaked.length) process.exitCode = 1
 })
-const errors = []
-page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
-// The fake backend answers some requests with errors on purpose; the browser logs those.
-page.on('console', (m) => m.type() === 'error' && !/status of (404|422)/.test(m.text()) && errors.push(`console: ${m.text()}`))
-await page.route('**/api/v1/**', async (route) => {
-  const request = route.request()
-  const url = new URL(request.url())
-  const body = request.postData() ? JSON.parse(request.postData()) : null
-  const { status, body: json } = answer(request.method(), url.pathname.replace('/api/v1', ''), body)
-  await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(json) })
-})
+const errors = watchErrors(page)
+await routeBackend(page, answer)
 
 const shot = (name) => page.screenshot({ path: join(OUT_DIR, name) })
-const expect = (condition, message) => {
-  if (!condition) throw new Error(message)
-}
+const frame = page.frameLocator('iframe[title="Site preview"]')
+const heading = frame.getByRole('heading', { name: 'Crumb Bakery' })
+const element = frame.getByText('Fresh bread every morning')
 
 try {
   // 1. No makable model and no key yet: AI mode asks for a key up front and leads to Settings.
+  // The user's site opens by itself (their newest).
   await page.goto(BASE_URL)
-  await page.getByRole('button', { name: 'Account menu' }).waitFor()
-  // A new chat is the landing page (prompt box, no Start over); a chat in progress gets reset.
-  const startOver = page.getByRole('button', { name: 'Start over' })
-  await startOver.or(page.getByRole('button', { name: 'I want a portfolio' })).first().waitFor()
-  if (await startOver.isVisible()) await startOver.click()
-  await page.getByRole('button', { name: 'I want a portfolio' }).click()
-  await page.getByRole('button', { name: 'Terminal template' }).last().click()
-  const frame = page.frameLocator('iframe[title="Portfolio preview"]')
-  await frame.locator('[data-theme="terminal"]').waitFor({ timeout: 60000 })
+  await heading.waitFor({ timeout: 90_000 })
   await page.getByRole('button', { name: 'Edit with AI' }).last().click()
   await page.getByText('AI edits run on your own API key').waitFor()
-  await clickInPreview(page, frame.locator('[data-content]').first())
+  await clickInPreview(page, element)
   const popover = page.getByRole('form', { name: 'Ask AI' })
   await popover.getByRole('link', { name: 'Add an API key' }).waitFor()
   expect((await page.getByRole('textbox', { name: 'Ask AI to make changes' }).count()) === 0, 'no text box without a model')
@@ -189,10 +150,10 @@ try {
 
   // 2. The builder's AI box offers the models and sends the pick.
   await page.getByRole('link', { name: 'Back to the builder' }).click()
-  await frame.locator('[data-theme="terminal"]').waitFor({ timeout: 60000 })
+  await heading.waitFor({ timeout: 90_000 })
   // AI mode is still on from before Settings, now with a model to use.
   await page.getByText('Click anything in the preview to change it with AI').waitFor()
-  await clickInPreview(page, frame.locator('[data-content]').first())
+  await clickInPreview(page, element)
   const aiBox = page.getByRole('textbox', { name: 'Ask AI to make changes' })
   await aiBox.waitFor()
 
@@ -206,7 +167,7 @@ try {
   expect(sent?.keyId === KEY_ID && sent?.model === 'gpt-5', `the user’s model should be sent, got ${JSON.stringify(sent)}`)
 
   // A finished request closes the box; select again.
-  await clickInPreview(page, frame.locator('[data-content]').first())
+  await clickInPreview(page, element)
   await picker.click()
   await page.getByRole('menuitem', { name: 'Manage models' }).waitFor()
   await shot('ai-model-menu.png')
@@ -220,9 +181,9 @@ try {
 
   // 3. Picks survive a reload, and a refused key drops back to makable's own.
   await page.reload()
+  await heading.waitFor({ timeout: 90_000 })
   await page.getByRole('button', { name: 'Edit with AI' }).last().click()
-  await frame.locator('[data-theme="terminal"]').waitFor({ timeout: 60000 })
-  await clickInPreview(page, frame.locator('[data-content]').first())
+  await clickInPreview(page, element)
   await page.getByRole('button', { name: 'AI model: makable default' }).waitFor()
   await picker.click()
   await page.getByRole('menuitem', { name: 'o4-mini' }).click()
@@ -230,7 +191,9 @@ try {
   backend.editAnswers.push(fail(422, 'ai_key_invalid', "The AI provider didn't accept your API key. Check it in Settings."))
   await aiBox.fill('Make it bold')
   await aiBox.press('Enter')
-  await page.getByText("didn't accept your API key").waitFor()
+  await popover.getByText("didn't accept your API key").waitFor()
+  // The chat keeps the request and why it failed.
+  await page.getByText("didn't accept your API key").first().waitFor()
   expect(backend.edits.at(-1).model?.model === 'o4-mini', 'the new pick should be sent')
   await popover.getByRole('link', { name: 'Manage AI models' }).waitFor()
   await page.getByRole('button', { name: 'AI model: makable default' }).waitFor()

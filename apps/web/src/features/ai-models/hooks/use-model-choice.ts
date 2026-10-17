@@ -23,7 +23,9 @@ export function useModelChoice() {
     setPick(login, toPick(option))
   }
 
-  return { options, selected, choice: toChoice(selected), select }
+  // makable's own model when nothing of the user's is picked.
+  const acceptsImages = (selected ?? options.find((o) => !o.keyId))?.acceptsImages ?? false
+  return { options, selected, choice: toChoice(selected), acceptsImages, select }
 }
 
 /**

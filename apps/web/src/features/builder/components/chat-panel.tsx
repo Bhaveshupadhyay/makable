@@ -1,54 +1,70 @@
-import { LoaderCircle, RotateCcw } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { type ReactNode, useEffect, useRef } from 'react'
 import { cn } from '@/shared/lib/cn'
 import { Button } from '@/shared/ui/button'
-import type { Builder } from '../hooks/use-builder'
+import type { ChatMessage as ChatMessageType } from '../lib/chat'
 import { ChatMessage } from './chat-message'
 import { Composer } from './composer'
 import { ConnectGithub } from './connect-github'
-import { PublishTokenForm } from './publish-token-form'
-import { TemplatePicker } from './template-picker'
-import { TARGETS } from '../lib/publish-flow'
 
-/** The conversation: messages with inline widgets and quick replies, and the composer. */
-export function ChatPanel({ builder, className }: { builder: Builder; className?: string }) {
-  const { conversation, busy, send, selectTemplate, startOver } = builder
-  const { messages, portfolio, publish } = conversation
+type ChatPanelProps = {
+  /** Shown at the top (the site's name and the sites menu). */
+  header: ReactNode
+  messages: ChatMessageType[]
+  /** After the messages: what's in progress (the AI working, a question waiting). */
+  tail?: ReactNode
+  /** Under the last message (e.g. the token box). */
+  latestExtra?: ReactNode
+  onSend: (text: string) => void
+  /** In the composer's place while it's set (the answers to a question the AI asked); undefined shows the composer. */
+  footer?: ReactNode
+  /** Quick replies of the latest message are offered while true. */
+  repliesEnabled?: boolean
+  composerDisabled?: boolean
+  placeholder?: string
+  /** While something runs: the composer's button stops it. */
+  onStop?: () => void
+  onUndo?: (commitSha: string) => void
+  undoDisabled?: boolean
+  className?: string
+}
+
+/** The conversation: messages with quick replies, what's in progress, and the composer (or what replaces it). */
+export function ChatPanel({
+  header,
+  messages,
+  tail,
+  latestExtra,
+  onSend,
+  footer,
+  repliesEnabled = true,
+  composerDisabled,
+  placeholder,
+  onStop,
+  onUndo,
+  undoDisabled,
+  className,
+}: ChatPanelProps) {
   const endRef = useRef<HTMLDivElement>(null)
   const latest = messages.at(-1)
-  const fresh = messages.length === 1
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages.length, busy])
+  }, [messages.length, tail])
 
   return (
     <div className={cn('flex h-full flex-col', className)}>
-      <div className="flex h-12 shrink-0 items-center justify-between border-b px-3">
-        <span className="text-sm font-medium">Chat</span>
-        <Button variant="ghost" size="sm" onClick={startOver} disabled={messages.length < 2}>
-          <RotateCcw />
-          Start over
-        </Button>
-      </div>
+      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-3">{header}</div>
 
-      <div className={cn('flex-1 overflow-y-auto px-4 py-5', fresh && 'flex flex-col justify-center')}>
-        <div className={cn('mx-auto max-w-2xl space-y-5', fresh && 'w-full')}>
+      <div className="flex-1 overflow-y-auto px-4 py-5">
+        <div className="mx-auto max-w-2xl space-y-5">
           {messages.map((message) => (
-            <ChatMessage key={message.id} message={message}>
-              {message.widget === 'template-picker' && (
-                <TemplatePicker selected={portfolio?.template} onSelect={selectTemplate} disabled={busy} />
-              )}
-              {message.widget === 'connect-github' && <ConnectGithub />}
-              {/* Publishing's inline parts live in this browser only (the token never enters the chat). */}
-              {message === latest && publish?.stage === 'token' && (
-                <PublishTokenForm platform={TARGETS[publish.target ?? 'vercel'].name} onSubmit={builder.publish.enterToken} />
-              )}
-              {message === latest && publish?.stage === 'reconnect' && <ConnectGithub reconnect />}
-              {message === latest && !busy && message.replies && message.replies.length > 0 && (
+            <ChatMessage key={message.id} message={message} onUndo={onUndo} undoDisabled={undoDisabled}>
+              {message.widget === 'reconnect-github' && message === latest && <ConnectGithub reconnect />}
+              {message === latest && latestExtra}
+              {message === latest && repliesEnabled && message.replies && message.replies.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {message.replies.map((reply) => (
-                    <Button key={reply} variant="outline" size="sm" className="rounded-full" onClick={() => send(reply)}>
+                    <Button key={reply} variant="outline" size="sm" className="rounded-full" onClick={() => onSend(reply)}>
                       {reply}
                     </Button>
                   ))}
@@ -56,25 +72,14 @@ export function ChatPanel({ builder, className }: { builder: Builder; className?
               )}
             </ChatMessage>
           ))}
-          {busy && (
-            <p className="flex items-center gap-2 pl-8 text-xs text-muted-foreground">
-              <LoaderCircle className="size-3.5 animate-spin" />
-              {publish?.stage === 'running' ? 'Publishing…' : 'Working…'}
-            </p>
-          )}
-          {publish?.stage === 'deploying' && (
-            <p className="flex items-center gap-2 pl-8 text-xs text-muted-foreground">
-              <LoaderCircle className="size-3.5 animate-spin" />
-              Deploying to {TARGETS[publish.target ?? 'github-pages'].name}…
-            </p>
-          )}
+          {tail}
           <div ref={endRef} />
         </div>
       </div>
 
       <div className="shrink-0 px-4 pb-4">
         <div className="mx-auto max-w-2xl">
-          <Composer onSend={send} disabled={busy} />
+          {footer ?? <Composer onSend={onSend} disabled={composerDisabled} placeholder={placeholder} onStop={onStop} />}
         </div>
       </div>
     </div>

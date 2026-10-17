@@ -1,24 +1,38 @@
 import { ArrowRight, Code, GitBranch, KeyRound, MessageSquare, MousePointerClick, Rocket, Sparkles } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
+import { useMediaQuery } from '@/shared/hooks/use-media-query'
+import { RotatingWord } from './rotating-word'
 import { SiteFooter } from './site-footer'
 
 const STEPS = [
-  { title: 'Tell it what you want', text: 'Say what you’re after. makable asks a few questions, one at a time, right in the chat.' },
-  { title: 'Pick a template', text: 'Templates show up inline. Pick one and the live preview opens beside the chat.' },
-  { title: 'Edit and publish', text: 'Click any text to change it, ask AI for bigger changes, then publish in one step.' },
+  { title: 'Describe your site', text: 'Say what you’re after in your own words. makable asks what it needs to know, right in the chat.' },
+  { title: 'makable builds it', text: 'It plans the site, writes every file and checks the code, in a new repo on your GitHub.' },
+  { title: 'Edit and publish', text: 'Click any text to change it, ask AI for bigger changes or edit the code, then publish in one step.' },
 ]
 
 const FEATURES = [
-  { icon: MessageSquare, title: 'Chat, not forms', text: 'Your GitHub profile fills in the first draft. You answer the rest conversationally.' },
-  { icon: MousePointerClick, title: 'Click to edit', text: 'Edit text straight in the live preview, with undo and redo.' },
-  { icon: Sparkles, title: 'Edit with AI', text: 'Select any part of the page and describe the change you want.' },
+  { icon: MessageSquare, title: 'From a prompt', text: 'Describe the site and get real React and Tailwind code, not a locked-in page.' },
+  { icon: MousePointerClick, title: 'Click to edit', text: 'Edit text straight in the live preview, with undo and redo. It changes the code.' },
+  { icon: Sparkles, title: 'Edit with AI', text: 'Select any part of the page and describe the change. It’s tried in the preview before it’s saved.' },
   { icon: Rocket, title: 'Publish anywhere', text: 'GitHub Pages, Vercel, Cloudflare Pages or Netlify.' },
-  { icon: GitBranch, title: 'Saved to your GitHub', text: 'Your session syncs to a private repo you own, so it follows you across devices.' },
+  { icon: GitBranch, title: 'Your code, your GitHub', text: 'Every site is its own repo on your GitHub, so it follows you across devices and tools.' },
   { icon: KeyRound, title: 'Bring your own model', text: 'Add your own AI keys and pick the model for every edit.' },
 ]
 
+/** The headline's first word, cycled: Build your website for free → Host your website for free. */
+const HEADLINE_VERBS = ['Build', 'Host']
+const BEAT_MS = 2000
+
 /** The home page before the chat starts. `children` is the prompt box that starts it. */
 export function Landing({ children }: { children: ReactNode }) {
+  const [beat, setBeat] = useState(0)
+  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
+  useEffect(() => {
+    if (reduceMotion) return
+    const timer = window.setInterval(() => setBeat((b) => (b + 1) % HEADLINE_VERBS.length), BEAT_MS)
+    return () => window.clearInterval(timer)
+  }, [reduceMotion])
+
   return (
     <div className="flex min-h-[calc(100svh-3.5rem)] flex-col">
       <section id="start" className="relative isolate overflow-hidden px-4 pt-20 pb-24 sm:pt-28">
@@ -29,11 +43,14 @@ export function Landing({ children }: { children: ReactNode }) {
             Open source · publishes from your own GitHub
           </span>
           <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-6xl">
-            Build your portfolio{' '}
-            <span className="bg-linear-to-r from-[#FF2E63] via-[#FF7A1A] to-[#8B5CF6] bg-clip-text text-transparent">by chatting</span>
+            <span className="sr-only">Build and host your website for free</span>
+            <span aria-hidden>
+              <RotatingWord words={HEADLINE_VERBS} index={beat} /> your website{' '}
+              <span className="bg-linear-to-r from-[#FF2E63] via-[#FF7A1A] to-[#8B5CF6] bg-clip-text text-transparent">for free</span>
+            </span>
           </h1>
           <p className="mt-5 max-w-xl text-base text-pretty text-muted-foreground sm:text-lg">
-            Pick a template, answer a few questions, and edit anything right in the live preview. Then publish it to the web.
+            Describe it. makable writes the code to your GitHub and publishes it.
           </p>
           <div className="mt-10 w-full">{children}</div>
         </div>
@@ -58,7 +75,7 @@ export function Landing({ children }: { children: ReactNode }) {
 
       <section className="px-4 py-20">
         <div className="mx-auto max-w-6xl">
-          <SectionTitle eyebrow="Features" title="Everything a developer portfolio needs" />
+          <SectionTitle eyebrow="Features" title="Everything a small site needs" />
           <ul className="mt-12 grid gap-px overflow-hidden rounded-2xl border bg-border sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map(({ icon: Icon, title, text }) => (
               <li key={title} className="group bg-background p-6 transition-colors hover:bg-muted/40">
@@ -75,7 +92,7 @@ export function Landing({ children }: { children: ReactNode }) {
         <div className="relative isolate mx-auto max-w-6xl overflow-hidden rounded-3xl border bg-foreground px-6 py-14 text-center text-background">
           <div className="absolute -top-24 left-1/2 -z-10 size-96 -translate-x-1/2 rounded-full bg-[#FF3366]/40 blur-3xl" />
           <h2 className="text-3xl font-semibold tracking-tight">Ready to make yours?</h2>
-          <p className="mx-auto mt-3 max-w-md text-sm opacity-70">No sign-up needed to start. Connect GitHub when you want to publish.</p>
+          <p className="mx-auto mt-3 max-w-md text-sm opacity-70">Sign in with GitHub to start. Your site lives in a repo of your own.</p>
           <a
             href="#start"
             className="mt-8 inline-flex items-center gap-2 rounded-full bg-background px-5 py-2.5 text-sm font-medium text-foreground transition-transform hover:scale-[1.03]"
