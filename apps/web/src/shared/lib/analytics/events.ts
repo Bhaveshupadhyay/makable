@@ -86,6 +86,15 @@ export type AnalyticsEvents = {
   deploy_started: { target: string | null }
   deploy_finished: { target: string | null; conclusion: string | null; timed_out: boolean }
 
+  // Site analytics (the user's own Google Analytics)
+  analytics_connect_started: { project_id: string }
+  /** Back from Google's consent page, connected. */
+  analytics_connected: Record<string, never>
+  analytics_connect_failed: { code: string }
+  analytics_stream_linked: { project_id: string }
+  analytics_stream_unlinked: { project_id: string }
+  analytics_disconnected: Record<string, never>
+
 }
 
 export type AnalyticsEventName = keyof AnalyticsEvents

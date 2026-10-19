@@ -19,6 +19,11 @@
   --border: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
   --radius: 0.625rem;
+  /* Charts (features/site-analytics): the one series hue, and delta inks that always come with an arrow and a label.
+     The series hue is checked against both backgrounds with the dataviz palette validator. */
+  --viz-series: #2a78d6;
+  --viz-good: #006300;
+  --viz-bad: #d03b3b;
 }
 
 .dark {
@@ -37,6 +42,9 @@
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --ring: oklch(0.556 0 0);
+  --viz-series: #3987e5;
+  --viz-good: #0ca30c;
+  --viz-bad: #e05a5a;
 }
 
 @theme inline {
@@ -55,6 +63,9 @@
   --color-destructive: var(--destructive);
   --color-border: var(--border);
   --color-ring: var(--ring);
+  --color-viz-series: var(--viz-series);
+  --color-viz-good: var(--viz-good);
+  --color-viz-bad: var(--viz-bad);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

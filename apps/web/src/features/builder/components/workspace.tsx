@@ -3,6 +3,7 @@ import { type ReactNode, useMemo, useRef } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { type AiNote, AnswerOptions, type AiRun, phaseText, useAiRun } from '@/features/ai-edit'
 import { SaveStatus, type SiteSync, useSiteStore, useSiteSync, workingFiles } from '@/features/site'
+import { AnalyticsButton } from '@/features/site-analytics'
 import { useMediaQuery } from '@/shared/hooks/use-media-query'
 import { Button } from '@/shared/ui/button'
 import { HeaderActions } from '@/shared/ui/header-slot'
@@ -54,6 +55,7 @@ export function Workspace({ login }: { login: string }) {
     <div className="h-[calc(100svh-3.5rem)]">
       <HeaderActions>
         <SaveStatus sync={sync} repoUrl={site?.repoUrl ?? null} />
+        <AnalyticsButton projectId={projectId} />
         <PublishButton stage={publish.flow?.stage} published={!!chat.published} disabled={ai.busy || !files} onPublish={publish.start} />
       </HeaderActions>
       <Group orientation={wide ? 'horizontal' : 'vertical'}>

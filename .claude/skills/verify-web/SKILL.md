@@ -23,7 +23,7 @@ reaches GitHub, a model or a hosting platform. Test those by hand with the backe
    bun x playwright-core install --only-shell chromium
    cp <repo>/.claude/skills/verify-web/*.mjs .
    ```
-3. **Run them:** `bun smoke.mjs`, `bun publish-smoke.mjs`, `bun ai-models-smoke.mjs` (env: `BASE_URL`, default
+3. **Run them:** `bun smoke.mjs`, `bun publish-smoke.mjs`, `bun ai-models-smoke.mjs`, `bun analytics-smoke.mjs` (env: `BASE_URL`, default
    `http://localhost:5199`; `OUT_DIR` for screenshots, default cwd). Each prints its steps and exits non-zero on a
    failure or any page/console error.
 4. **Look at the screenshots** with the Read tool. Check the layout, not just the assertions.
@@ -51,7 +51,15 @@ mode asks for a key and links to Settings), a refused key, then a good one, two 
 or in localStorage, a model picked in the AI box and sent, picks remembered over a reload, and a refused key falling back
 to makable default. Screenshots: `ai-needs-key.png`, `ai-settings-choose.png`, `ai-settings.png`, `ai-model-menu.png`.
 
-**Analytics:** start the dev server with `VITE_ANALYTICS_DEBUG=true VITE_MIXPANEL_TOKEN=smoke-test-token VITE_MIXPANEL_LOCAL=true` to have
+**`analytics-smoke.mjs`** (a site's Google Analytics, on an existing site; Google's consent page is answered by a
+Playwright route): the header's Analytics link, connecting Google (the redirect's `?analytics=connected` shown, then
+cleared), the property and web stream picker (a property without a web stream says so; the only stream is picked),
+the dashboard (the publish banner, totals with their changes, the chart's hover tooltip, metric and range switches,
+the table view, the top lists), a phone without sideways scrolling, unlinking back to the picker, a refused Google
+token asking to connect again, and an `?analyticsError` explained. Screenshots: `analytics-connect.png`,
+`analytics-picker.png`, `analytics-dashboard.png`, `analytics-mobile.png`.
+
+**Analytics (Mixpanel):** start the dev server with `VITE_ANALYTICS_DEBUG=true VITE_MIXPANEL_TOKEN=smoke-test-token VITE_MIXPANEL_LOCAL=true` to have
 `publish-smoke.mjs` and `ai-models-smoke.mjs` list the analytics events they saw and fail if a pasted token or API key
 appears in any of them. Mixpanel's requests are answered by Playwright, so nothing reaches Mixpanel.
 
