@@ -1,5 +1,5 @@
 import { Monitor, Moon, Sun } from 'lucide-react'
-import { type ThemeChoice, useThemeStore } from '@/shared/lib/theme'
+import { type ThemeChoice, useTheme, useThemeStore } from '@/shared/lib/theme'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from './dropdown-menu'
 
 const CHOICES: { value: ThemeChoice; label: string; icon: typeof Sun }[] = [
@@ -10,8 +10,8 @@ const CHOICES: { value: ThemeChoice; label: string; icon: typeof Sun }[] = [
 
 /** The header's light / dark / system switch. Shown to guests too. */
 export function ThemeMenu() {
-  const { choice, theme, setChoice } = useThemeStore()
-  const Icon = theme === 'dark' ? Moon : Sun
+  const { choice, setChoice } = useThemeStore()
+  const Icon = useTheme() === 'dark' ? Moon : Sun
 
   return (
     <DropdownMenu>

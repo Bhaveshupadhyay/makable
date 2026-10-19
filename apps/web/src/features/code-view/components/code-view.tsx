@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMediaQuery } from '@/shared/hooks/use-media-query'
 import { analytics } from '@/shared/lib/analytics'
 import { cn } from '@/shared/lib/cn'
-import { useThemeStore } from '@/shared/lib/theme'
+import { useTheme } from '@/shared/lib/theme'
 import { buildFileTree, defaultFile, fileKind, type TreeNode } from '../lib/file-tree'
 
 type CodeViewProps = {
@@ -41,7 +41,7 @@ export function CodeView({ files, modified = NONE, projectName, onChange, readOn
   const [active, setActive] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(NONE)
   const [cursor, setCursor] = useState({ line: 1, column: 1 })
-  const dark = useThemeStore((s) => s.theme === 'dark')
+  const dark = useTheme() === 'dark'
 
   // Files can disappear (e.g. an AI change deletes one), so tabs and the active file are derived.
   const current = active && active in files ? active : (tabs.find((p) => p in files) ?? defaultFile(paths))

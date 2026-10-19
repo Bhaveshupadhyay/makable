@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import { useMediaQuery } from '@/shared/hooks/use-media-query'
 
 export type ThemeChoice = 'light' | 'dark' | 'system'
 export type Theme = 'light' | 'dark'
@@ -18,35 +19,50 @@ export function parseChoice(value: unknown): ThemeChoice {
   return value === 'light' || value === 'dark' ? value : 'system'
 }
 
+// Only the choice is stored. The theme on screen also depends on the system's setting, which is read when needed and
+// never written: a tab writing it could put back its old choice over a newer one another tab just saved.
 type ThemeState = {
   choice: ThemeChoice
-  /** What's on screen: the choice, or the system's for `system`. */
-  theme: Theme
   setChoice: (choice: ThemeChoice) => void
 }
 
-const systemDark = () => typeof window !== 'undefined' && window.matchMedia(DARK_QUERY).matches
-
 export const useThemeStore = create<ThemeState>()(
-  persist<ThemeState, [], [], Pick<ThemeState, 'choice'>>(
+  persist(
     (set) => ({
       choice: 'system',
-      theme: resolveTheme('system', systemDark()),
-      setChoice: (choice) => set({ choice, theme: resolveTheme(choice, systemDark()) }),
+      setChoice: (choice) => set({ choice }),
     }),
     {
       name: THEME_STORAGE_KEY,
       version: 1,
-      storage: createJSONStorage(() => localStorage),
+      // A write can fail (storage full or blocked); the choice still applies to this page.
+      storage: createJSONStorage(() => {
+        const storage = localStorage
+        return {
+          getItem: (name) => storage.getItem(name),
+          setItem: (name, value) => {
+            try {
+              storage.setItem(name, value)
+            } catch {
+              // Not saved: only this page has the choice.
+            }
+          },
+          removeItem: (name) => storage.removeItem(name),
+        }
+      }),
       partialize: ({ choice }) => ({ choice }),
-      // Here rather than in onRehydrateStorage: the first hydration runs inside `create`, before `useThemeStore` exists.
-      merge: (saved, current) => {
-        const choice = parseChoice((saved as Partial<ThemeState> | undefined)?.choice)
-        return { ...current, choice, theme: resolveTheme(choice, systemDark()) }
-      },
+      merge: (saved, current) => ({ ...current, choice: parseChoice((saved as Partial<ThemeState> | undefined)?.choice) }),
     },
   ),
 )
+
+const systemDark = () => window.matchMedia(DARK_QUERY).matches
+
+/** The theme on screen: the choice, or the system's for `system`. */
+export function useTheme(): Theme {
+  const choice = useThemeStore((s) => s.choice)
+  return resolveTheme(choice, useMediaQuery(DARK_QUERY))
+}
 
 function apply(theme: Theme) {
   const root = document.documentElement
@@ -67,12 +83,17 @@ function switchTo(theme: Theme) {
 
 /** Keeps `<html>` in step with the choice, the system's setting (for `system`) and other tabs. Call once at start. */
 export function initTheme() {
-  apply(useThemeStore.getState().theme)
-  useThemeStore.subscribe(({ theme }, before) => theme !== before.theme && switchTo(theme))
-  window.matchMedia(DARK_QUERY).addEventListener('change', (e) => {
-    const { choice } = useThemeStore.getState()
-    useThemeStore.setState({ theme: resolveTheme(choice, e.matches) })
-  })
+  const current = () => resolveTheme(useThemeStore.getState().choice, systemDark())
+  let shown = current()
+  apply(shown)
+  const update = () => {
+    const theme = current()
+    if (theme === shown) return
+    shown = theme
+    switchTo(theme)
+  }
+  useThemeStore.subscribe(update)
+  window.matchMedia(DARK_QUERY).addEventListener('change', update)
   window.addEventListener('storage', (e) => {
     if (e.key === THEME_STORAGE_KEY) void useThemeStore.persist.rehydrate()
   })

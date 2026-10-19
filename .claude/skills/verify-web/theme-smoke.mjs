@@ -95,12 +95,35 @@ try {
   await until(async () => !(await isDark()), 'System to follow a light system')
   await page.emulateMedia({ colorScheme: 'dark' })
   await until(isDark, 'System to follow a dark system')
+  // A system change is read, never written: it must not put this tab's choice over a newer one another tab saved.
+  const newer = JSON.stringify({ state: { choice: 'light' }, version: 1 })
+  await page.evaluate((value) => localStorage.setItem('makable:theme', value), newer)
+  await page.emulateMedia({ colorScheme: 'light' })
+  await until(async () => !(await isDark()), 'System to follow a light system again')
+  const after = await page.evaluate(() => localStorage.getItem('makable:theme'))
+  expect(after === newer, `a system change must not write the choice (${after})`)
+  await page.emulateMedia({ colorScheme: 'dark' })
   await pick('Light')
   await page.emulateMedia({ colorScheme: 'light' })
   await page.emulateMedia({ colorScheme: 'dark' })
   await page.waitForTimeout(200)
   expect(!(await isDark()), 'an explicit Light must ignore the system changing')
-  console.log('✓ System follows the system live; an explicit choice ignores it')
+  console.log('✓ System follows the system live (without writing the choice); an explicit choice ignores it')
+
+  // A choice that can't be saved (storage full or blocked) still applies, without an error.
+  await page.evaluate(() => {
+    window.__setItem = Storage.prototype.setItem
+    Storage.prototype.setItem = () => {
+      throw new DOMException('full', 'QuotaExceededError')
+    }
+  })
+  await pick('Dark')
+  expect(await isDark(), 'Dark must apply even when it cannot be saved')
+  await page.evaluate(() => {
+    Storage.prototype.setItem = window.__setItem
+  })
+  await pick('Light')
+  console.log('✓ a choice that can’t be saved still applies, with no error')
 
   // 5. Another tab follows.
   site.signedIn = true
@@ -110,7 +133,8 @@ try {
   await other.goto(`${BASE_URL}/about`)
   await other.getByRole('heading').first().waitFor()
   expect(!(await isDark(other)), 'a new tab must open with the saved Light')
-  await pick('Dark')
+  // Picked in the first tab: the other one only learns it from the storage event.
+  await pick('Dark', page)
   await until(() => isDark(other), 'the other tab to turn dark')
   await other.waitForTimeout(300)
   await shot('theme-about-dark.png', other)
@@ -123,6 +147,8 @@ try {
   await page.goto(BASE_URL)
   await heading.waitFor({ timeout: 90_000 })
   expect(await isDark(), 'Dark must hold signed in')
+  const frameScheme = await page.locator('iframe[title="Site preview"]').evaluate((el) => getComputedStyle(el).colorScheme)
+  expect(frameScheme === 'normal', `the preview must not take the app's colour scheme (${frameScheme})`)
   await page.waitForTimeout(1_000)
   await shot('theme-workspace-dark.png')
   await page.getByRole('radio', { name: 'Code' }).click()
