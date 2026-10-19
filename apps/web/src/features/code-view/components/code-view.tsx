@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMediaQuery } from '@/shared/hooks/use-media-query'
 import { analytics } from '@/shared/lib/analytics'
 import { cn } from '@/shared/lib/cn'
+import { useThemeStore } from '@/shared/lib/theme'
 import { buildFileTree, defaultFile, fileKind, type TreeNode } from '../lib/file-tree'
 
 type CodeViewProps = {
@@ -22,12 +23,13 @@ type CodeViewProps = {
 }
 
 const NONE: ReadonlySet<string> = new Set()
-const MODIFIED = '#e2c08d'
+const MODIFIED = 'var(--code-modified)'
 const FONT = 'Menlo, Monaco, "SF Mono", Consolas, "Courier New", monospace'
 
 /**
  * The site's code in a VS Code-style editor: activity bar, Explorer, tabs, breadcrumb, Monaco (loaded from a CDN on
- * first use) and a status bar. Always dark, like an IDE. Edits go to `onChange` as the user types.
+ * first use) and a status bar, in VS Code's light or dark colours with the app's theme (`.mk-code` in index.css).
+ * Edits go to `onChange` as the user types.
  */
 export function CodeView({ files, modified = NONE, projectName, onChange, readOnlyReason, locked = null }: CodeViewProps) {
   const paths = useMemo(() => Object.keys(files), [files])
@@ -39,6 +41,7 @@ export function CodeView({ files, modified = NONE, projectName, onChange, readOn
   const [active, setActive] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(NONE)
   const [cursor, setCursor] = useState({ line: 1, column: 1 })
+  const dark = useThemeStore((s) => s.theme === 'dark')
 
   // Files can disappear (e.g. an AI change deletes one), so tabs and the active file are derived.
   const current = active && active in files ? active : (tabs.find((p) => p in files) ?? defaultFile(paths))
@@ -112,10 +115,10 @@ export function CodeView({ files, modified = NONE, projectName, onChange, readOn
   const readOnly = !onChange ? 'This code is read-only here.' : (locked ?? (current ? (readOnlyReason?.(current) ?? null) : null))
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#1e1e1e] text-[13px] text-[#cccccc]" style={{ colorScheme: 'dark' }}>
+    <div className="mk-code flex h-full min-h-0 flex-col bg-(--code-editor) text-[13px] text-(--code-fg)">
       <div className="flex min-h-0 flex-1">
         {/* Activity bar */}
-        <div className="flex w-12 shrink-0 flex-col items-center border-r border-[#2b2b2b] bg-[#333333] py-1">
+        <div className="flex w-12 shrink-0 flex-col items-center border-r border-(--code-border) bg-(--code-activity) py-1">
           <button
             type="button"
             aria-label="Explorer"
@@ -123,8 +126,8 @@ export function CodeView({ files, modified = NONE, projectName, onChange, readOn
             title="Explorer"
             onClick={() => setExplorerOpen(!showExplorer)}
             className={cn(
-              'flex h-12 w-12 items-center justify-center border-l-2 text-[#858585] hover:text-white',
-              showExplorer ? 'border-white text-white' : 'border-transparent',
+              'flex h-12 w-12 items-center justify-center border-l-2 text-(--code-icon) hover:text-(--code-strong)',
+              showExplorer ? 'border-(--code-strong) text-(--code-strong)' : 'border-transparent',
             )}
           >
             <Files className="size-6" strokeWidth={1.5} />
@@ -132,8 +135,8 @@ export function CodeView({ files, modified = NONE, projectName, onChange, readOn
         </div>
 
         {showExplorer && (
-          <nav aria-label="Explorer" className="flex w-56 shrink-0 flex-col border-r border-[#2b2b2b] bg-[#252526]">
-            <div className="flex h-9 shrink-0 items-center px-5 text-[11px] tracking-wide text-[#bbbbbb] uppercase">Explorer</div>
+          <nav aria-label="Explorer" className="flex w-56 shrink-0 flex-col border-r border-(--code-border) bg-(--code-sidebar)">
+            <div className="flex h-9 shrink-0 items-center px-5 text-[11px] tracking-wide text-(--code-title) uppercase">Explorer</div>
             <div className="flex h-[22px] shrink-0 items-center gap-0.5 px-1 text-[11px] font-bold tracking-wide uppercase">
               <ChevronDown className="size-4" />
               <span className="truncate">{projectName}</span>
@@ -148,7 +151,7 @@ export function CodeView({ files, modified = NONE, projectName, onChange, readOn
 
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Tabs */}
-          <div role="tablist" aria-label="Open files" className="flex h-9 shrink-0 overflow-x-auto bg-[#252526] [scrollbar-width:none]">
+          <div role="tablist" aria-label="Open files" className="flex h-9 shrink-0 overflow-x-auto bg-(--code-sidebar) [scrollbar-width:none]">
             {shownTabs.map((path) => {
               const selected = path === current
               const tabKind = fileKind(path)
@@ -159,8 +162,8 @@ export function CodeView({ files, modified = NONE, projectName, onChange, readOn
                   aria-selected={selected}
                   title={path}
                   className={cn(
-                    'group flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-[#252526] pr-1.5 pl-3 select-none',
-                    selected ? 'border-t border-t-[#0078d4] bg-[#1e1e1e] text-white' : 'border-t border-t-transparent bg-[#2d2d2d] text-[#969696]',
+                    'group flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-(--code-sidebar) pr-1.5 pl-3 select-none',
+                    selected ? 'border-t border-t-(--code-accent) bg-(--code-editor) text-(--code-strong)' : 'border-t border-t-transparent bg-(--code-tab) text-(--code-tab-fg)',
                   )}
                   onClick={() => open(path)}
                   onAuxClick={(e) => e.button === 1 && close(path)}
@@ -175,7 +178,7 @@ export function CodeView({ files, modified = NONE, projectName, onChange, readOn
                       close(path)
                     }}
                     className={cn(
-                      'ml-1 rounded p-0.5 hover:bg-[#ffffff1f]',
+                      'ml-1 rounded p-0.5 hover:bg-(--code-hover-strong)',
                       selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
                     )}
                   >
@@ -189,25 +192,25 @@ export function CodeView({ files, modified = NONE, projectName, onChange, readOn
           {current && kind ? (
             <>
               {/* Breadcrumb */}
-              <div aria-label="Breadcrumb" className="flex h-[22px] shrink-0 items-center gap-0.5 overflow-hidden px-4 text-[12px] whitespace-nowrap text-[#a9a9a9]">
+              <div aria-label="Breadcrumb" className="flex h-[22px] shrink-0 items-center gap-0.5 overflow-hidden px-4 text-[12px] whitespace-nowrap text-(--code-muted)">
                 {current.split('/').map((part, i, all) => (
                   <span key={i} className="flex items-center gap-0.5">
                     {i > 0 && <ChevronRight className="size-3.5 opacity-60" />}
                     {i === all.length - 1 && <Badge kind={kind} />}
-                    <span className={i === all.length - 1 ? 'text-[#cccccc]' : undefined}>{part}</span>
+                    <span className={i === all.length - 1 ? 'text-(--code-fg)' : undefined}>{part}</span>
                   </span>
                 ))}
               </div>
               <div className="min-h-0 flex-1">
                 <Editor
-                  theme="vs-dark"
+                  theme={dark ? 'vs-dark' : 'vs'}
                   path={current}
                   language={kind.language}
                   defaultValue={files[current]}
                   beforeMount={configureMonaco}
                   onMount={onMount}
                   loading={
-                    <span className="flex items-center gap-2 text-xs text-[#858585]">
+                    <span className="flex items-center gap-2 text-xs text-(--code-icon)">
                       <LoaderCircle className="size-4 animate-spin" /> Loading editor…
                     </span>
                   }
@@ -232,7 +235,7 @@ export function CodeView({ files, modified = NONE, projectName, onChange, readOn
               </div>
             </>
           ) : (
-            <div className="flex flex-1 items-center justify-center text-[#6e6e6e]">Open a file from the Explorer.</div>
+            <div className="flex flex-1 items-center justify-center text-(--code-faint)">Open a file from the Explorer.</div>
           )}
         </div>
       </div>
@@ -288,7 +291,7 @@ function TreeItem({ node, depth, current, collapsed, modified, onOpen, onToggle 
           type="button"
           onClick={() => onToggle(node.path)}
           style={{ ...indent, color: changed ? MODIFIED : undefined }}
-          className="flex h-[22px] w-full items-center gap-0.5 pr-3 text-left hover:bg-[#2a2d2e]"
+          className="flex h-[22px] w-full items-center gap-0.5 pr-3 text-left hover:bg-(--code-hover)"
         >
           {open ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
           <span className="flex-1 truncate">{node.name}</span>
@@ -313,7 +316,7 @@ function TreeItem({ node, depth, current, collapsed, modified, onOpen, onToggle 
         onClick={() => onOpen(node.path)}
         title={node.path}
         style={{ paddingLeft: 8 + depth * 12 + 18, color: changed ? MODIFIED : undefined }}
-        className={cn('flex h-[22px] w-full items-center gap-1.5 pr-3 text-left', selected ? 'bg-[#37373d] text-white' : 'hover:bg-[#2a2d2e]')}
+        className={cn('flex h-[22px] w-full items-center gap-1.5 pr-3 text-left', selected ? 'bg-(--code-selected) text-(--code-strong)' : 'hover:bg-(--code-hover)')}
       >
         <Badge kind={fileKind(node.path)} />
         <span className="flex-1 truncate">{node.name}</span>

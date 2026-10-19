@@ -3,9 +3,10 @@ import { UserMenu } from '@/features/auth'
 import { SiteNav } from '@/features/marketing'
 import { HeaderSlot, HeaderSlotProvider } from '@/shared/ui/header-slot'
 import { MakableIcon } from '@/shared/ui/makable-logo'
+import { ThemeMenu } from '@/shared/ui/theme-menu'
 import { AnalyticsTracker } from '../analytics-tracker'
 
-/** App shell. Pages can add actions to the header (`HeaderActions`); the user menu shows once GitHub is connected. */
+/** App shell. Pages can add actions to the header (`HeaderActions`); the theme switch is always there, the user menu once GitHub is connected. */
 export function AppLayout() {
   return (
     <HeaderSlotProvider>
@@ -21,6 +22,7 @@ export function AppLayout() {
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <HeaderSlot className="flex items-center gap-1" />
+            <ThemeMenu />
             <UserMenu />
           </div>
         </header>
