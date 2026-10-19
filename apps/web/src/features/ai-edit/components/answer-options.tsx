@@ -90,7 +90,7 @@ export function AnswerOptions({ options, onPick, typeLabel, onChat, onSkip, skip
           <span aria-hidden className={NUMBER}>
             {i + 1}
           </span>
-          {COLOUR.test(option.trim()) && <span aria-hidden className="size-3.5 shrink-0 rounded-full ring-1 ring-black/10" style={{ background: option.trim() }} />}
+          {COLOUR.test(option.trim()) && <span aria-hidden className="size-3.5 shrink-0 rounded-full ring-1 ring-foreground/15" style={{ background: option.trim() }} />}
           <span className="min-w-0 flex-1 break-words">{option}</span>
         </button>
       ))}

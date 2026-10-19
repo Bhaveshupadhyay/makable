@@ -101,7 +101,7 @@ export function AiEditPopover({ ai, target, anchor, scale = 1, onClear }: AiEdit
           {question && !ai.busy && (
             <div className="space-y-1.5 px-1">
               <p className="flex gap-1.5 text-sm">
-                <MessageCircleQuestion className="mt-0.5 size-4 shrink-0 text-violet-600" />
+                <MessageCircleQuestion className="mt-0.5 size-4 shrink-0 text-violet-600 dark:text-violet-400" />
                 {question}
               </p>
               <AnswerOptions
