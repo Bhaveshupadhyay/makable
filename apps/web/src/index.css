@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:is(.dark *));
+/* `.dark` is set on <html> by shared/lib/theme.ts (and before the first paint by index.html). */
+@custom-variant dark (&:where(.dark, .dark *));
 
 :root {
   --background: oklch(1 0 0);
@@ -79,6 +80,47 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
+}
+
+/* The code view's chrome (features/code-view): VS Code's Light Modern and Dark+ colours. */
+.mk-code {
+  --code-editor: #ffffff;
+  --code-fg: #3b3b3b;
+  --code-strong: #1f1f1f;
+  --code-muted: #616161;
+  --code-faint: #868686;
+  --code-icon: #868686;
+  --code-title: #616161;
+  --code-border: #e5e5e5;
+  --code-activity: #f8f8f8;
+  --code-sidebar: #f8f8f8;
+  --code-tab: #f8f8f8;
+  --code-tab-fg: #868686;
+  --code-accent: #005fb8;
+  --code-hover: #f2f2f2;
+  --code-hover-strong: #0000001a;
+  --code-selected: #e4e6f1;
+  --code-modified: #895503;
+}
+
+.dark .mk-code {
+  --code-editor: #1e1e1e;
+  --code-fg: #cccccc;
+  --code-strong: #ffffff;
+  --code-muted: #a9a9a9;
+  --code-faint: #6e6e6e;
+  --code-icon: #858585;
+  --code-title: #bbbbbb;
+  --code-border: #2b2b2b;
+  --code-activity: #333333;
+  --code-sidebar: #252526;
+  --code-tab: #2d2d2d;
+  --code-tab-fg: #969696;
+  --code-accent: #0078d4;
+  --code-hover: #2a2d2e;
+  --code-hover-strong: #ffffff1f;
+  --code-selected: #37373d;
+  --code-modified: #e2c08d;
 }
 
 /* Landing: the hero's slow-moving brand glow. */

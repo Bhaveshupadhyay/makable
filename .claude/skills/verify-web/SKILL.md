@@ -23,9 +23,9 @@ reaches GitHub, a model or a hosting platform. Test those by hand with the backe
    bun x playwright-core install --only-shell chromium
    cp <repo>/.claude/skills/verify-web/*.mjs .
    ```
-3. **Run them:** `bun smoke.mjs`, `bun publish-smoke.mjs`, `bun ai-models-smoke.mjs`, `bun analytics-smoke.mjs` (env: `BASE_URL`, default
-   `http://localhost:5199`; `OUT_DIR` for screenshots, default cwd). Each prints its steps and exits non-zero on a
-   failure or any page/console error.
+3. **Run them:** `bun smoke.mjs`, `bun publish-smoke.mjs`, `bun ai-models-smoke.mjs`, `bun analytics-smoke.mjs`,
+   `bun theme-smoke.mjs` (env: `BASE_URL`, default `http://localhost:5199`; `OUT_DIR` for screenshots, default cwd).
+   Each prints its steps and exits non-zero on a failure or any page/console error.
 4. **Look at the screenshots** with the Read tool. Check the layout, not just the assertions.
 5. **Stop the dev server:** `pkill -f 'vite --port 5199'`.
 
@@ -50,6 +50,15 @@ a failed deploy), and a site changed elsewhere (a conflict, not an overwrite). S
 mode asks for a key and links to Settings), a refused key, then a good one, two models chosen, the key never on the page
 or in localStorage, a model picked in the AI box and sent, picks remembered over a reload, and a refused key falling back
 to makable default. Screenshots: `ai-needs-key.png`, `ai-settings-choose.png`, `ai-settings.png`, `ai-model-menu.png`.
+
+**`theme-smoke.mjs`** (light and dark mode, on a dark system): with no choice the system's theme (System checked), Light
+picked, saved and kept over a reload, the saved theme set by `index.html` before the app runs (the app's script
+blocked; a broken saved value falls back to the system), System following the system's setting live while an explicit
+choice ignores it, another tab following, the workspace and the code view (Monaco's `vs` / `vs-dark` and the editor
+chrome), Settings, and the header on a phone. Screenshots: `theme-landing-dark.png`, `theme-menu.png`,
+`theme-sign-in-dark.png`, `theme-landing-light.png`, `theme-about-dark.png`, `theme-workspace-dark.png`,
+`theme-code-dark.png`, `theme-code-light.png`, `theme-workspace-light.png`, `theme-settings-dark.png`,
+`theme-workspace-mobile-dark.png`, `theme-landing-mobile-dark.png`.
 
 **`analytics-smoke.mjs`** (a site's Google Analytics, on an existing site; Google's consent page is answered by a
 Playwright route): the header's Analytics link, connecting Google (the redirect's `?analytics=connected` shown, then

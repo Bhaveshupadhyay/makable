@@ -69,10 +69,11 @@ export function PreviewPane({ preview: { iframeRef, state, refresh }, actions, b
           style={{ width: width * scale + 2 * FRAME_BORDER }}
           className="relative h-full overflow-hidden rounded-md border bg-white shadow-sm"
         >
+          {/* `colorScheme: normal`: not the app's theme (inherited from <html>), so the site keeps its own colours. */}
           <iframe
             ref={iframeRef}
             title="Site preview"
-            style={{ width, ...frameScaleStyle(scale, navigator.userAgent) }}
+            style={{ width, colorScheme: 'normal', ...frameScaleStyle(scale, navigator.userAgent) }}
             className="block"
           />
           {overlay?.(scale)}
