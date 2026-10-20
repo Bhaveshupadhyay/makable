@@ -1,3 +1,4 @@
+import type { AiUsage } from '@makable/shared'
 import type { AiPausedRun, AiThread } from '@/features/ai-edit'
 import type { PublishFlow } from './publish-flow'
 
@@ -23,6 +24,8 @@ export type ChatMessage = {
   settingsLink?: boolean
   /** What the AI did before it said this (a creation's progress), shown collapsed above the text. */
   steps?: string[]
+  /** What the request took (tokens, time), under the AI's reply: only for the user's own key. */
+  usage?: AiUsage
 }
 
 /** The browser's own part of the chat, per site. */
@@ -71,6 +74,7 @@ export function buildChat(thread: AiThread | null, local: LocalChat, undone: rea
       text: turn.reply || replyFor(turn.outcome),
       at,
       steps: turn.steps,
+      ...(turn.usage ? { usage: turn.usage } : {}),
       ...(undoable ? { undo: { commitSha: turn.commitSha!, done: undone.includes(turn.commitSha!) } } : {}),
     })
   }

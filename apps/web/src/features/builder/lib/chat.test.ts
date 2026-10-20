@@ -59,3 +59,23 @@ test('what the AI did before each question and before its reply stays with them'
   const run = { runId: 'r', mode: 'create' as const, instruction: 'A bakery site', target: null, question: { question: 'Name?', options: [], allowFreeText: true }, steps: ['Thinking about your site'] }
   expect(pausedRunChat(run).at(-1)?.steps).toEqual(['Thinking about your site'])
 })
+
+test("what a request took goes under the AI's reply, when the server sent it", () => {
+  const usage = {
+    modelCalls: 1,
+    inputTokens: 1000,
+    outputTokens: 200,
+    totalTokens: 1200,
+    reasoningTokens: null,
+    cachedTokens: null,
+    costUsd: null,
+    modelSeconds: 3.2,
+    seconds: 4.1,
+  }
+  const withUsage: AiThread = { ...thread, turns: [thread.turns[0], { ...thread.turns[1], usage }] }
+
+  const chat = buildChat(withUsage, { messages: [] })
+
+  expect(chat.find((m) => m.text === 'Pink now.')?.usage).toEqual(usage)
+  expect(chat.filter((m) => m.usage)).toHaveLength(1)
+})

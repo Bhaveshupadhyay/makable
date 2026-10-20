@@ -13,6 +13,18 @@ const KIND_QUESTION = { question: 'What kind of site is it?', options: ['A landi
 const NAME_REPLY = "It becomes your site's title and its repository's name on your GitHub, so anything works. What should we call it?"
 const COLOUR_QUESTION = { question: 'Which colour should the buttons be?', options: ['#e11d48', '#2563eb'], allowFreeText: true }
 const WEEKEND = '<p className="mt-2 text-amber-800">Open weekends 8–2</p>'
+// What an AI request took, as the server sends it for the user's own key.
+const USAGE = {
+  modelCalls: 2,
+  inputTokens: 11_200,
+  outputTokens: 1_240,
+  totalTokens: 12_440,
+  reasoningTokens: 640,
+  cachedTokens: 8_192,
+  costUsd: 0.0213,
+  modelSeconds: 9.46,
+  seconds: 12.3,
+}
 
 const site = fakeSites({ exists: false })
 const seen = { creates: [], answers: [], edits: [], results: [], editAnswers: [], undos: [], publishes: [], statusSince: [] }
@@ -273,8 +285,9 @@ try {
       if (!body.ok) return fail(502, 'ai_edit_broke_preview', 'broke')
       const files = withWeekend()
       const commitSha = site.commitChanges(files)
-      site.turn({ instruction: 'Add our weekend hours under this', target: 'p “Warm bread all day”', reply: 'Added the weekend hours.' })
-      return ok({ status: 'applied', runId: body.runId, summary: 'Added the weekend hours.', commitSha, files })
+      // The request was made with the user's own key, so the server says what it took.
+      site.turn({ instruction: 'Add our weekend hours under this', target: 'p “Warm bread all day”', reply: 'Added the weekend hours.', usage: USAGE })
+      return ok({ status: 'applied', runId: body.runId, summary: 'Added the weekend hours.', commitSha, files, usage: USAGE })
     },
   )
   await page.getByRole('button', { name: 'Edit with AI' }).click()
@@ -294,6 +307,17 @@ try {
   await page.getByRole('button', { name: 'Undo this change' }).last().waitFor()
   await shot('ai-edit.png')
   console.log('✓ AI edit: sent on the saved commit with the selection’s source, tried in the preview, reported ok, committed')
+
+  // What it took, under the reply: one line, the details on a click. The creation's reply (makable's model) has none.
+  const usageLine = page.getByRole('button', { name: '12s · 12.4k tokens' })
+  expect((await usageLine.count()) === 1, 'only the request made with the user’s key says what it took')
+  await usageLine.click()
+  for (const text of ['11,200 tokens, 8,192 from the cache', '1,240 tokens, 640 thinking', '$0.02', '9.5s over 2 calls']) {
+    await page.getByText(text, { exact: true }).waitFor()
+  }
+  await shot('ai-usage.png')
+  await usageLine.click()
+  console.log('✓ AI edit usage: time and tokens under the reply, the details on a click')
 
   await page.getByRole('button', { name: 'Undo this change' }).last().click()
   await chatSays('Undone.')
