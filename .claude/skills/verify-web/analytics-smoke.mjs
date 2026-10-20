@@ -12,7 +12,7 @@ const STREAM = { id: '9876543210', name: 'Crumb Bakery site', measurementId: 'G-
 
 // --- The fake backend ---
 const site = fakeSites()
-const google = { connected: false, link: null, reports: [], linkBodies: [], refuseToken: false }
+const google = { connected: false, link: null, reports: [], linkBodies: [], refuseToken: false, failUnlink: false }
 const accounts = [
   { id: '555', name: 'Octocat', properties: [{ id: '123456789', name: 'Crumb Bakery' }, { id: '222', name: 'Old blog' }] },
   { id: '777', name: 'Empty account', properties: [] },
@@ -65,6 +65,7 @@ function answer(method, path, body, query) {
     return ok(google.link)
   }
   if (method === 'DELETE' && path === `/sites/${PROJECT_ID}/analytics`) {
+    if (google.failUnlink) return fail(503, 'service_busy', 'The server is busy right now. Try again in a moment.')
     google.link = null
     return { status: 204 }
   }
@@ -150,9 +151,22 @@ try {
   await page.setViewportSize({ width: 1280, height: 900 })
   console.log('✓ phone: the dashboard fits')
 
-  // 5. Stop analytics for the site: back to the picker. Then Google refuses the token: connect again.
-  await page.getByRole('button', { name: 'More analytics options' }).click()
-  await page.getByRole('menuitem', { name: 'Stop analytics for this site' }).click()
+  // 5. Stop analytics for the site: a failure is shown in the confirmation (and gone when it's opened again), then
+  // back to the picker. Then Google refuses the token: connect again.
+  const stopAnalytics = async () => {
+    await page.getByRole('button', { name: 'More analytics options' }).click()
+    await page.getByRole('menuitem', { name: 'Stop analytics for this site' }).click()
+  }
+  await stopAnalytics()
+  google.failUnlink = true
+  errors.expected = true // the browser logs the 503
+  await page.getByRole('button', { name: 'Stop analytics' }).click()
+  await page.getByRole('alertdialog').getByRole('alert').getByText('The server is busy right now').waitFor()
+  errors.expected = false
+  google.failUnlink = false
+  await page.getByRole('button', { name: 'Cancel' }).click()
+  await stopAnalytics()
+  expect((await page.getByRole('alertdialog').getByRole('alert').count()) === 0, 'the last attempt’s error should be cleared')
   await page.getByRole('button', { name: 'Stop analytics' }).click()
   await page.getByRole('heading', { name: 'Pick where this site reports' }).waitFor()
   await page.getByLabel(/^Crumb Bakery/).check()
@@ -161,7 +175,7 @@ try {
   google.refuseToken = true
   await page.getByRole('radio', { name: 'Last 90 days' }).click()
   await page.getByRole('heading', { name: 'Connect Google Analytics again' }).waitFor()
-  console.log('✓ unlink goes back to the picker; a refused Google token asks to connect again')
+  console.log('✓ unlink: a failure is shown; then back to the picker; a refused Google token asks to connect again')
 
   // 6. Google's errors come back in the address and are explained.
   google.refuseToken = false

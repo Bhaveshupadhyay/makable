@@ -42,6 +42,7 @@ export function AnalyticsDashboard({
   const report = useReport(projectId, range, true)
   const unlink = useUnlinkStream(projectId)
   const disconnect = useDisconnectGoogle()
+  const action = confirming === 'unlink' ? unlink : disconnect
   const refresh = useRefresh()
   const data = report.data
   const code = errorCode(report.error)
@@ -50,6 +51,13 @@ export function AnalyticsDashboard({
   useEffect(() => {
     if (code === 'google_reconnect' || code === 'google_not_connected') void refresh()
   }, [code, refresh])
+
+  // Each confirmation starts without the last attempt's error.
+  const confirm = (next: typeof confirming) => {
+    unlink.reset()
+    disconnect.reset()
+    setConfirming(next)
+  }
 
   return (
     <div className="space-y-6">
@@ -81,8 +89,8 @@ export function AnalyticsDashboard({
                 </a>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => setConfirming('unlink')}>Stop analytics for this site</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setConfirming('disconnect')}>Disconnect Google</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => confirm('unlink')}>Stop analytics for this site</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => confirm('disconnect')}>Disconnect Google</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -94,19 +102,19 @@ export function AnalyticsDashboard({
                 : `Disconnect ${email ?? 'your Google account'}? makable stops reading your Analytics for every site. The tag stays on your published sites.`}
             </p>
             <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={unlink.isPending || disconnect.isPending}
-                onClick={() => (confirming === 'unlink' ? unlink.mutate() : disconnect.mutate())}
-              >
-                {(unlink.isPending || disconnect.isPending) && <LoaderCircle className="animate-spin" />}
+              <Button size="sm" variant="outline" disabled={action.isPending} onClick={() => action.mutate()}>
+                {action.isPending && <LoaderCircle className="animate-spin" />}
                 {confirming === 'unlink' ? 'Stop analytics' : 'Disconnect'}
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setConfirming(null)}>
+              <Button size="sm" variant="ghost" onClick={() => confirm(null)}>
                 Cancel
               </Button>
             </div>
+            {action.error && (
+              <p role="alert" className="w-full text-destructive">
+                {errorText(action.error)}
+              </p>
+            )}
           </div>
         )}
       </section>

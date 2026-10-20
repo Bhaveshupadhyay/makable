@@ -3,6 +3,9 @@ import type { AnalyticsReport, GaAccount, GaStream, GoogleConnection, ReportRang
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
+/** The id comes from the address (decoded by the router), so it's encoded again to stay one path segment. */
+const sitePath = (projectId: string) => `/sites/${encodeURIComponent(projectId)}/analytics`
+
 export function fetchConnection(): Promise<GoogleConnection> {
   return backendFetch<GoogleConnection>('/analytics/google')
 }
@@ -32,12 +35,12 @@ export function fetchStreams(propertyId: string): Promise<GaStream[]> {
 }
 
 export function fetchSiteAnalytics(projectId: string): Promise<SiteAnalyticsStatus> {
-  return backendFetch<SiteAnalyticsStatus>(`/sites/${projectId}/analytics`)
+  return backendFetch<SiteAnalyticsStatus>(sitePath(projectId))
 }
 
 /** The backend checks the stream with Google before linking it. The next publish adds its tag to the site. */
 export function linkStream(projectId: string, body: { propertyId: string; streamId: string }): Promise<SiteAnalyticsLink> {
-  return backendFetch<SiteAnalyticsLink>(`/sites/${projectId}/analytics`, {
+  return backendFetch<SiteAnalyticsLink>(sitePath(projectId), {
     method: 'PUT',
     headers: JSON_HEADERS,
     body: JSON.stringify(body),
@@ -45,9 +48,9 @@ export function linkStream(projectId: string, body: { propertyId: string; stream
 }
 
 export function unlinkStream(projectId: string): Promise<void> {
-  return backendFetch<void>(`/sites/${projectId}/analytics`, { method: 'DELETE' })
+  return backendFetch<void>(sitePath(projectId), { method: 'DELETE' })
 }
 
 export function fetchReport(projectId: string, range: ReportRange): Promise<AnalyticsReport> {
-  return backendFetch<AnalyticsReport>(`/sites/${projectId}/analytics/report?range=${range}`)
+  return backendFetch<AnalyticsReport>(`${sitePath(projectId)}/report?range=${range}`)
 }

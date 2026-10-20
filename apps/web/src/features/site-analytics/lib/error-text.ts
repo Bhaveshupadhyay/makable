@@ -9,6 +9,8 @@ export function connectErrorText(code: string): string {
       return 'Tick “See your Google Analytics data” on Google’s page so makable can show your traffic.'
     case 'invalid_state':
       return 'That connection attempt expired or came from another tab. Try connecting again.'
+    case 'service_busy':
+      return 'makable was too busy to connect Google Analytics just then. Try connecting again in a moment.'
     default:
       return 'Google Analytics couldn’t be connected. Try again in a moment.'
   }
