@@ -22,6 +22,8 @@ export type AiPending = {
   target: string | null
   /** `thinking`: waiting for the AI. `checking`: its change is in the preview. `saving`: committing it. */
   phase: 'thinking' | 'checking' | 'saving'
+  /** When the request went out (`performance.now()`), for the time it's taking. */
+  since: number
   /** When it answers a question: the paused run as it was, and what the user sent it (the chat keeps showing both). */
   answering?: { run: AiPausedRun; sent: string }
 }
@@ -83,7 +85,7 @@ export function useAiRun(deps: Deps) {
     const started = performance.now()
     inFlight.current = { controller, phase: 'thinking', started, instruction, target }
     setError(null)
-    setPending({ instruction, target, phase: 'thinking', answering })
+    setPending({ instruction, target, phase: 'thinking', since: started, answering })
     const phase = (next: AiPending['phase']) => {
       if (inFlight.current?.controller === controller) inFlight.current.phase = next
       setPending((p) => p && { ...p, phase: next })

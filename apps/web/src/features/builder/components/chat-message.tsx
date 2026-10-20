@@ -6,6 +6,7 @@ import { Button } from '@/shared/ui/button'
 import { MakableIcon } from '@/shared/ui/makable-logo'
 import type { ChatMessage as ChatMessageType } from '../lib/chat'
 import { Steps } from './steps'
+import { UsageLine } from './usage-line'
 
 type ChatMessageProps = {
   message: ChatMessageType
@@ -49,6 +50,7 @@ export function ChatMessage({ message, onUndo, undoDisabled, children }: ChatMes
             </>
           )}
         </p>
+        {message.usage && <UsageLine usage={message.usage} />}
         {message.undo &&
           onUndo &&
           (message.undo.done ? (

@@ -1,15 +1,16 @@
 import { type AiEditTarget, MAX_INSTRUCTION } from '@makable/shared'
-import { ArrowUp, Crosshair, LoaderCircle, MessageCircleQuestion, Square, X } from 'lucide-react'
+import { ArrowUp, Crosshair, MessageCircleQuestion, Square, X } from 'lucide-react'
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { AddKeyPrompt, ModelPicker, useModelStatus } from '@/features/ai-models'
 import { useElementSize } from '@/shared/hooks/use-element-size'
 import { Button } from '@/shared/ui/button'
 import type { AiRun } from '../hooks/use-ai-run'
-import { phaseText } from '../lib/phase-text'
+import { EDITS_PAUSED, phaseText } from '../lib/phase-text'
 import { type Box, placePopover } from '../lib/place-popover'
 import { targetLabel } from '../lib/target-label'
 import { AnswerOptions } from './answer-options'
+import { ThinkingLine } from './thinking-line'
 
 type AiEditPopoverProps = {
   ai: AiRun
@@ -158,12 +159,7 @@ export function AiEditPopover({ ai, target, anchor, scale = 1, onClear }: AiEdit
               </div>
             </>
           )}
-          {ai.pending && (
-            <p role="status" className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
-              <LoaderCircle className="size-3.5 animate-spin" />
-              {phaseText(ai.pending)}
-            </p>
-          )}
+          {ai.pending && <ThinkingLine role="status" label={phaseText(ai.pending)} since={ai.pending.since} hint={EDITS_PAUSED} className="px-1" />}
           {ai.error && (
             <p role="alert" className="px-1 text-xs text-destructive">
               {ai.error.message}{' '}

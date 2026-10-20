@@ -89,6 +89,27 @@ export type AiQuestion = {
 export type AiDebug = { modelInput: string; attempts: number; model: string }
 
 /**
+ * What an AI request took. Only sent for requests made with the user's own key. A token count is null when the
+ * provider didn't say: `reasoningTokens` (the model's thinking, part of `outputTokens`) and `cachedTokens` (part of
+ * `inputTokens`) for providers that don't report them. `inputTokens`, `outputTokens` and `totalTokens` are null
+ * together: every reply's counts come as a pair, and once any reply came without them the sums would be short.
+ * `costUsd` only comes from providers that report it (OpenRouter).
+ */
+export type AiUsage = {
+  modelCalls: number
+  inputTokens: number | null
+  outputTokens: number | null
+  totalTokens: number | null
+  reasoningTokens: number | null
+  cachedTokens: number | null
+  costUsd: number | null
+  /** Waiting for the model. */
+  modelSeconds: number
+  /** The whole request, without the time it waited for the user or the preview. */
+  seconds: number
+}
+
+/**
  * How an AI request came back:
  * - `applied`: committed to the site's repo; `files` are what it changed, as they are now (null: deleted).
  * - `awaiting_result`: not committed yet. Try `files` in the preview and report how it went.
@@ -97,16 +118,25 @@ export type AiDebug = { modelInput: string; attempts: number; model: string }
  * - `created`: the site was built from the prompt and committed.
  */
 export type AiResult =
-  | { status: 'applied'; runId: string; summary: string; commitSha: string; files: Record<string, string | null>; debug?: AiDebug }
+  | {
+      status: 'applied'
+      runId: string
+      summary: string
+      commitSha: string
+      files: Record<string, string | null>
+      usage?: AiUsage | null
+      debug?: AiDebug
+    }
   | { status: 'awaiting_result'; runId: string; summary: string; files: Record<string, string | null>; debug?: AiDebug }
   | { status: 'needs_input'; runId: string; question: AiQuestion; debug?: AiDebug }
-  | { status: 'escalated'; runId: string; reason: string; debug?: AiDebug }
+  | { status: 'escalated'; runId: string; reason: string; usage?: AiUsage | null; debug?: AiDebug }
   | {
       status: 'created'
       runId: string
       summary: string
       commitSha: string
       site: { projectId: string; name: string; repoName: string | null; repoUrl: string | null; updatedAt: string }
+      usage?: AiUsage | null
     }
 
 /** One line of a creation's stream (`POST /ai/create`, `application/x-ndjson`). */

@@ -1,4 +1,4 @@
-import type { AiCreateRequest, AiEditRequest, AiQuestion, AiResult, AiStreamEvent } from '@makable/shared'
+import type { AiCreateRequest, AiEditRequest, AiQuestion, AiResult, AiStreamEvent, AiUsage } from '@makable/shared'
 import { ApiError, backendFetch, backendStream } from '@/shared/lib/api-client'
 import { readJsonLines } from '../lib/json-lines'
 
@@ -15,6 +15,8 @@ export type AiTurn = {
   /** What the AI did after the last question (a creation's progress), shown collapsed above the reply. */
   steps?: string[]
   commitSha?: string | null
+  /** What it took (tokens, time): only for requests made with the user's own key. */
+  usage?: AiUsage | null
   createdAt: string
 }
 
