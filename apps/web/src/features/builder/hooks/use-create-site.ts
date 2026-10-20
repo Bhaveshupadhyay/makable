@@ -21,6 +21,8 @@ export type Creating = {
   steps: string[]
   /** Files written of those planned, while writing. */
   written: { done: number; total: number } | null
+  /** When the request went out (`performance.now()`), for the time it's taking. */
+  since: number
   /** When it answers one of its questions: the paused run as it was, and what the user sent it (the chat keeps showing both). */
   answering?: { run: AiPausedRun; sent: string }
 }
@@ -48,7 +50,7 @@ export function useCreateSite() {
     const controller = new AbortController()
     inFlight.current = controller
     const started = performance.now()
-    setCreating({ prompt, steps: [], written: null, answering })
+    setCreating({ prompt, steps: [], written: null, since: started, answering })
     // What it did, also for a creation that fails or is stopped: the message saying so keeps them.
     let done: string[] = []
     const onEvent = (event: AiStreamEvent) => {

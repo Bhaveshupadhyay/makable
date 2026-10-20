@@ -1,7 +1,7 @@
 import { LoaderCircle } from 'lucide-react'
 import { type ReactNode, useMemo, useRef } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
-import { type AiNote, AnswerOptions, type AiRun, phaseText, useAiRun } from '@/features/ai-edit'
+import { type AiNote, AnswerOptions, type AiRun, EDITS_PAUSED, phaseText, ThinkingLine, useAiRun } from '@/features/ai-edit'
 import { SaveStatus, type SiteSync, useSiteStore, useSiteSync, workingFiles } from '@/features/site'
 import { useMediaQuery } from '@/shared/hooks/use-media-query'
 import { Button } from '@/shared/ui/button'
@@ -130,7 +130,7 @@ function WorkspaceChat({ projectId, ai, ctx, publish, sync, busy }: WorkspaceCha
         ) : (
           <ChatMessage message={{ id: 'pending', role: 'user', text: ai.pending.instruction, caption: ai.pending.target, at: '' }} />
         )}
-        <Status>{phaseText(ai.pending)}</Status>
+        <ThinkingLine role="status" label={phaseText(ai.pending)} since={ai.pending.since} hint={EDITS_PAUSED} className="pl-8" />
       </>
     )
   } else if (question?.question) {

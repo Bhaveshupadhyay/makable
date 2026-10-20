@@ -280,7 +280,8 @@ try {
   // 3. AI edit on a selected element: tried in the preview, then committed; the chat offers Undo.
   const withWeekend = () => ({ 'src/App.tsx': site.files['src/App.tsx'].replace('</p>', `</p>\n      ${WEEKEND}`) })
   editAnswers.push(
-    () => ok({ status: 'awaiting_result', runId: runId(), summary: 'Added the weekend hours.', files: withWeekend() }),
+    // The AI takes a moment, so the time it's taking can be seen ticking.
+    () => new Promise((resolve) => setTimeout(() => resolve(ok({ status: 'awaiting_result', runId: runId(), summary: 'Added the weekend hours.', files: withWeekend() })), 2_300)),
     (body) => {
       if (!body.ok) return fail(502, 'ai_edit_broke_preview', 'broke')
       const files = withWeekend()
@@ -296,6 +297,15 @@ try {
   await ask.fill('Add our weekend hours under this')
   await shot('ai-edit-popover.png')
   await ask.press('Enter')
+  // While it works, the chat and the AI box say so, with the time so far, from the request's start.
+  const elapsed = page.locator('[data-elapsed]')
+  await page.getByText('Thinking…').first().waitFor()
+  expect((await elapsed.count()) === 2, `the chat and the AI box both show the time so far (${await elapsed.count()})`)
+  const first = await elapsed.first().innerText()
+  expect(/^\([01]s · manual edits paused\)$/.test(first), `the time starts at the request: ${first}`)
+  await page.waitForFunction(() => [...document.querySelectorAll('[data-elapsed]')].every((e) => e.textContent?.startsWith('(1s')), null, { timeout: 3_000 })
+  await shot('ai-thinking.png')
+  console.log('✓ thinking: the chat and the AI box show the AI at work, its time ticking from the request’s start')
   await frame.getByText('Open weekends 8–2').waitFor({ timeout: 60_000 })
   await until(() => seen.results.length === 1, 'the preview report')
   const [edit] = seen.edits

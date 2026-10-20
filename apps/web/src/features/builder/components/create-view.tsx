@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Check, LoaderCircle } from 'lucide-react'
-import { AnswerOptions, dismissRun, threadKey, useThread } from '@/features/ai-edit'
+import { Check } from 'lucide-react'
+import { AnswerOptions, dismissRun, ThinkingLine, threadKey, useThread } from '@/features/ai-edit'
 import { useSession } from '@/features/auth'
 import { useSiteStore } from '@/features/site'
 import type { CreateSite, Creating } from '../hooks/use-create-site'
@@ -87,18 +87,14 @@ function Progress({ creating }: { creating: Creating }) {
         <ChatMessage key={message.id} message={message} />
       ))}
       <div className="space-y-1.5 pl-8 text-sm" role="status">
-        {steps.length === 0 && (
-          <p className="flex items-center gap-2 text-muted-foreground">
-            <LoaderCircle className="size-3.5 animate-spin" />
-            {answering ? 'Thinking…' : 'Starting…'}
-          </p>
-        )}
-        {steps.map((step, i) => (
+        {steps.slice(0, -1).map((step, i) => (
           <p key={`${i}-${step}`} className="flex items-center gap-2 text-muted-foreground">
-            {i === steps.length - 1 ? <LoaderCircle className="size-3.5 shrink-0 animate-spin" /> : <Check className="size-3.5 shrink-0" />}
+            <Check className="size-3.5 shrink-0" />
             <span className="truncate">{step}</span>
           </p>
         ))}
+        {/* The step in progress, with the time the request has taken so far. */}
+        <ThinkingLine label={steps.at(-1) ?? (answering ? 'Thinking…' : 'Starting…')} since={creating.since} className="text-sm" />
         {written && (
           <div className="h-1 w-48 overflow-hidden rounded-full bg-muted" aria-label={`${written.done} of ${written.total} files written`}>
             <div className="h-full bg-primary transition-[width]" style={{ width: `${Math.round((100 * written.done) / Math.max(written.total, 1))}%` }} />

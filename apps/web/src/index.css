@@ -267,7 +267,82 @@
   }
 }
 
+/* What the AI is doing, while it works: a light sweeps over the words (features/ai-edit/components/thinking-line.tsx). */
+.mk-shimmer {
+  background: linear-gradient(
+      90deg,
+      var(--muted-foreground) 40%,
+      var(--foreground) 50%,
+      var(--muted-foreground) 60%
+    )
+    0 0 / 300% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: mk-shimmer 2.4s linear infinite;
+}
+
+@keyframes mk-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+/* Beside it, makable's mark being made: its folds unfold one after another, left to right, over a faint copy of the
+   mark, then fade in the same order, so it's always on its way. */
+.mk-making path {
+  transform-box: fill-box;
+  transform-origin: 0 50%;
+  animation: mk-making 1.8s infinite backwards;
+}
+
+.mk-making path:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.mk-making path:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.mk-making path:nth-child(4) {
+  animation-delay: 0.45s;
+}
+
+@keyframes mk-making {
+  0% {
+    opacity: 0;
+    transform: scaleX(0);
+    animation-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
+  }
+  20% {
+    opacity: 1;
+    transform: none;
+  }
+  55% {
+    opacity: 1;
+    transform: none;
+    animation-timing-function: ease-in;
+  }
+  75%,
+  100% {
+    opacity: 0;
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .mk-shimmer {
+    animation: none;
+    background: none;
+    color: var(--muted-foreground);
+  }
+
+  .mk-making path {
+    animation: none;
+  }
+
   .mk-word-out {
     animation: none;
     opacity: 0;
