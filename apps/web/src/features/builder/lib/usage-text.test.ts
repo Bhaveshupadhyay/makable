@@ -32,7 +32,15 @@ test('token counts are exact below a thousand, then short', () => {
 })
 
 test('a cost keeps the digits of a fraction of a cent', () => {
-  expect([0, 0.00004, 0.0021, 0.0213, 1.4].map(costText)).toEqual(['$0', '<$0.0001', '$0.0021', '$0.02', '$1.40'])
+  expect([0, 0.00004, 0.0021, 0.0213, 0.004, 0.5, 1.4].map(costText)).toEqual([
+    '$0',
+    '<$0.0001',
+    '$0.0021',
+    '$0.0213',
+    '$0.004',
+    '$0.50',
+    '$1.40',
+  ])
 })
 
 test('the line under the reply has the time and the tokens', () => {
@@ -44,7 +52,7 @@ test('the details say what each part was, leaving out what the provider did not 
   expect(usageDetails(usage)).toEqual([
     { label: 'Input', value: '11,200 tokens, 8,192 from the cache' },
     { label: 'Output', value: '1,240 tokens, 640 thinking' },
-    { label: 'Cost', value: '$0.02' },
+    { label: 'Cost', value: '$0.0213' },
     { label: 'Model', value: '9.5s over 2 calls' },
     { label: 'In all', value: '12s' },
   ])

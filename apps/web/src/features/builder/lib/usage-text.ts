@@ -19,11 +19,12 @@ export function tokenText(count: number): string {
   return compact.format(count).replace('K', 'k')
 }
 
-/** Dollars, with enough digits for a fraction of a cent. */
+/** Dollars as the provider charged them, to a hundredth of a cent: "$0.0213", "$0.004", "$1.40". */
 export function costText(usd: number): string {
   if (usd === 0) return '$0'
   if (usd < 0.0001) return '<$0.0001'
-  return `$${usd.toFixed(usd < 0.01 ? 4 : 2)}`
+  // Four decimals, without the zeros after the cents.
+  return `$${usd.toFixed(4).replace(/0{1,2}$/, '')}`
 }
 
 /** The line under the reply: how long it took and, when the provider said, how many tokens. */

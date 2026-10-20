@@ -312,7 +312,7 @@ try {
   const usageLine = page.getByRole('button', { name: '12s · 12.4k tokens' })
   expect((await usageLine.count()) === 1, 'only the request made with the user’s key says what it took')
   await usageLine.click()
-  for (const text of ['11,200 tokens, 8,192 from the cache', '1,240 tokens, 640 thinking', '$0.02', '9.5s over 2 calls']) {
+  for (const text of ['11,200 tokens, 8,192 from the cache', '1,240 tokens, 640 thinking', '$0.0213', '9.5s over 2 calls']) {
     await page.getByText(text, { exact: true }).waitFor()
   }
   await shot('ai-usage.png')

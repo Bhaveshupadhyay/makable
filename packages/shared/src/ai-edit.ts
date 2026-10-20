@@ -91,7 +91,8 @@ export type AiDebug = { modelInput: string; attempts: number; model: string }
 /**
  * What an AI request took. Only sent for requests made with the user's own key. A token count is null when the
  * provider didn't say: `reasoningTokens` (the model's thinking, part of `outputTokens`) and `cachedTokens` (part of
- * `inputTokens`) for providers that don't report them, the others when a reply came without counts.
+ * `inputTokens`) for providers that don't report them. `inputTokens`, `outputTokens` and `totalTokens` are null
+ * together: every reply's counts come as a pair, and once any reply came without them the sums would be short.
  * `costUsd` only comes from providers that report it (OpenRouter).
  */
 export type AiUsage = {
