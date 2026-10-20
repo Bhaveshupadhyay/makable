@@ -15,8 +15,9 @@ type ThinkingLineProps = HTMLAttributes<HTMLParagraphElement> & {
 /**
  * The AI at work: makable's mark being made, what it's doing (shimmering) and the time it has taken so far, e.g.
  * "Thinking… (12s · manual edits paused)". Where it doesn't fit it wraps like a sentence (the time and the hint stay
- * together), so nothing is cut off. With reduced motion only the time moves. The mark and the time are hidden from
- * screen readers, so a live region around the line announces only what it's doing.
+ * together), so nothing is cut off. With reduced motion only the time moves. The mark and the ticking time are hidden
+ * from screen readers, so a live region around the line announces what it's doing and the hint ("Thinking… manual
+ * edits paused"), not every second.
  */
 export function ThinkingLine({ label, since, hint, className, ...props }: ThinkingLineProps) {
   return (
@@ -48,8 +49,14 @@ function Elapsed({ since, hint }: { since: number; hint?: string }) {
   }, [])
   const time = elapsedText((now - since) / 1000)
   return (
-    <span aria-hidden data-elapsed className="whitespace-nowrap tabular-nums">
-      ({hint ? `${time} · ${hint}` : time})
+    <span data-elapsed className="whitespace-nowrap tabular-nums">
+      <span aria-hidden>({hint ? `${time} · ` : `${time})`}</span>
+      {hint && (
+        <>
+          {hint}
+          <span aria-hidden>)</span>
+        </>
+      )}
     </span>
   )
 }

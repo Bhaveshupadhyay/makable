@@ -303,6 +303,9 @@ try {
   expect((await elapsed.count()) === 2, `the chat and the AI box both show the time so far (${await elapsed.count()})`)
   const first = await elapsed.first().innerText()
   expect(/^\([01]s · manual edits paused\)$/.test(first), `the time starts at the request: ${first}`)
+  // Screen readers hear what it's doing and that manual edits wait, not every second.
+  const spoken = await page.locator('p[role=status]:has([data-elapsed])').first().ariaSnapshot()
+  expect(spoken.includes('Thinking… manual edits paused') && !/\ds\b/.test(spoken), `what screen readers hear: ${spoken}`)
   await page.waitForFunction(() => [...document.querySelectorAll('[data-elapsed]')].every((e) => e.textContent?.startsWith('(1s')), null, { timeout: 3_000 })
   await shot('ai-thinking.png')
   console.log('✓ thinking: the chat and the AI box show the AI at work, its time ticking from the request’s start')
