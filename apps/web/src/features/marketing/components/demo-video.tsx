@@ -1,13 +1,15 @@
-import { RotateCcw, Volume2, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { Dialog } from 'radix-ui'
 import { useEffect, useRef, useState } from 'react'
 import { analytics } from '@/shared/lib/analytics'
 import { Button } from '@/shared/ui/button'
-import { DEMO_VIDEO_URL, demoSource, playedSeconds } from '../lib/demo'
+import { demoSource } from '../lib/demo'
+import { DemoPlayer } from './demo-player'
 
 /**
- * The product demo, played over the page when the visit's link asks for it (`?utm_source=res`, the resume's link).
- * Building needs a GitHub sign-in, which is a lot to ask of someone who only wants to see what makable does.
+ * The product demo, played over the page when the visit's link asks for it (`?utm_source=res` or `resume`, the
+ * resume's links), and closed by itself when it ends, to show the site. Building needs a GitHub sign-in, which is a
+ * lot to ask of someone who only wants to see what makable does.
  */
 export function DemoVideo() {
   // Read once: the parameter stays in the address for analytics, and coming back to it mustn't open the demo again.
@@ -16,21 +18,25 @@ export function DemoVideo() {
   const watched = useRef({ seconds: 0, ended: false })
 
   useEffect(() => {
-    if (source) analytics.track('demo_video_shown', { source })
+    if (source) analytics.track('demo_video_shown', { placement: 'dialog', source })
   }, [source])
 
-  function onOpenChange(next: boolean) {
-    if (!next) analytics.track('demo_video_closed', { watched_seconds: Math.round(watched.current.seconds), ended: watched.current.ended })
-    setOpen(next)
+  // By the visitor (the button, Escape, a click outside), or by itself once the video ends, to show the site.
+  function close(reason: 'dismissed' | 'ended') {
+    analytics.track('demo_video_closed', { reason, watched_seconds: Math.round(watched.current.seconds), ended: watched.current.ended })
+    setOpen(false)
   }
 
   if (!source) return null
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={(next) => !next && close('dismissed')}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
         {/* As wide as fits both ways: the video is 16:9, and the title and padding need about 11rem of the height. */}
-        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 w-[min(calc(100vw_-_2rem),calc((100svh_-_11rem)*16/9),64rem)] -translate-x-1/2 -translate-y-1/2 space-y-4 rounded-2xl border bg-background p-4 shadow-lg sm:p-5">
+        <Dialog.Content
+          data-analytics-section="demo_dialog"
+          className="fixed top-1/2 left-1/2 z-50 w-[min(calc(100vw_-_2rem),calc((100svh_-_11rem)*16/9),64rem)] -translate-x-1/2 -translate-y-1/2 space-y-4 rounded-2xl border bg-background p-4 shadow-lg sm:p-5"
+        >
           <div className="space-y-1 pr-10">
             <Dialog.Title className="text-lg font-semibold tracking-tight">See makable in action</Dialog.Title>
             <Dialog.Description className="text-sm text-muted-foreground">
@@ -38,11 +44,14 @@ export function DemoVideo() {
             </Dialog.Description>
           </div>
           <DemoPlayer
+            placement="dialog"
+            autoPlay
             onWatched={(seconds) => {
               watched.current.seconds = seconds
             }}
             onEnded={() => {
               watched.current.ended = true
+              close('ended')
             }}
           />
           <Dialog.Close asChild>
@@ -54,90 +63,4 @@ export function DemoVideo() {
       </Dialog.Portal>
     </Dialog.Root>
   )
-}
-
-type DemoPlayerProps = {
-  /** How much of the video has played, in seconds, as it plays. */
-  onWatched: (seconds: number) => void
-  onEnded: () => void
-}
-
-/**
- * Plays as soon as it opens: with sound where the browser allows it, else muted with a button to turn it on. A video
- * that can't load (the network, the host) says so and can be tried again.
- */
-function DemoPlayer({ onWatched, onEnded }: DemoPlayerProps) {
-  const ref = useRef<HTMLVideoElement>(null)
-  const [muted, setMuted] = useState(false)
-  const [paused, setPaused] = useState(true)
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
-    if (ref.current) autoplay(ref.current)
-  }, [])
-
-  function turnOnSound() {
-    const video = ref.current
-    if (!video) return
-    video.muted = false
-    // A click lets it play with sound, also when it couldn't start by itself.
-    video.play().catch(() => {})
-  }
-
-  function tryAgain() {
-    const video = ref.current
-    if (!video) return
-    setFailed(false)
-    video.load()
-    autoplay(video)
-  }
-
-  return (
-    <div className="relative overflow-hidden rounded-xl bg-black">
-      <video
-        ref={ref}
-        src={DEMO_VIDEO_URL}
-        controls
-        playsInline
-        preload="auto"
-        className="aspect-video w-full"
-        onVolumeChange={(e) => setMuted(e.currentTarget.muted)}
-        onPlay={() => setPaused(false)}
-        onPause={() => setPaused(true)}
-        onTimeUpdate={(e) => onWatched(playedSeconds(e.currentTarget.played))}
-        onEnded={onEnded}
-        onError={(e) => {
-          const error = e.currentTarget.error
-          analytics.track('demo_video_failed', { code: error?.code ?? null, message: error?.message ?? '' })
-          setFailed(true)
-        }}
-      />
-      {muted && !failed && (
-        <Button size="sm" variant="secondary" className="absolute top-3 left-3 shadow-md" onClick={turnOnSound}>
-          <Volume2 />
-          {paused ? 'Play with sound' : 'Turn on sound'}
-        </Button>
-      )}
-      {failed && (
-        <div role="alert" className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 p-4 text-center text-sm text-white">
-          <p>The demo couldn’t load. Check your connection and try again.</p>
-          <Button size="sm" variant="secondary" onClick={tryAgain}>
-            <RotateCcw />
-            Try again
-          </Button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/** Plays with sound where the browser allows it, else muted. Refused even muted (iOS in low-power mode), it waits for a click. */
-function autoplay(video: HTMLVideoElement) {
-  video.play().catch((error: unknown) => {
-    // Browsers only play sound by themselves once the visitor has interacted with the site. Other refusals (the
-    // video can't load) come with the element's `error` event.
-    if (!(error instanceof DOMException) || error.name !== 'NotAllowedError') return
-    video.muted = true
-    video.play().catch(() => {})
-  })
 }

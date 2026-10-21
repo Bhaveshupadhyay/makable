@@ -25,12 +25,21 @@ export type AnalyticsEvents = {
   // Sign-in from the landing page
   github_sign_in_prompted: { reason: string }
 
-  // The product demo, opened by the link on the resume (`?utm_source=res`)
-  demo_video_shown: { source: string }
-  /** `watched_seconds`: how much of it played, without the parts skipped over. */
-  demo_video_closed: { watched_seconds: number; ended: boolean }
+  // The product demo: over the page for the resume's links (`placement: 'dialog'`, `?utm_source=res` or `resume`), and
+  // on the landing page under how it works (`'landing'`).
+  /** The dialog opened (`source`: the link's `utm_source`), or the landing page's video scrolled into view. */
+  demo_video_shown: { placement: 'dialog' | 'landing'; source: string | null }
+  /** It started playing, the first time for this player: by itself in the dialog, on a click on the landing page. */
+  demo_video_played: { placement: 'dialog' | 'landing'; muted: boolean }
+  /** Each quarter of it seen (`percent` 25, 50, 75, 100), once per player, counting only what played. */
+  demo_video_progress: { placement: 'dialog' | 'landing'; percent: number }
+  /**
+   * The dialog was closed: by the visitor (`dismissed`), or by itself when the video ended (`ended`), to show the site.
+   * `watched_seconds`: how much of it played, without the parts skipped over.
+   */
+  demo_video_closed: { reason: 'dismissed' | 'ended'; watched_seconds: number; ended: boolean }
   /** The video couldn't load or play: `code` is the `MediaError` code (2 network, 3 decode, 4 not supported). */
-  demo_video_failed: { code: number | null; message: string }
+  demo_video_failed: { placement: 'dialog' | 'landing'; code: number | null; message: string }
 
   // Sites built from a prompt
   site_create_started: { prompt: string; model: string }
