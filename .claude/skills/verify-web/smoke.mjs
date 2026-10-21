@@ -34,8 +34,29 @@ const editAnswers = []
 let runs = 0
 const runId = () => `00000000-0000-4000-8000-${String(++runs).padStart(12, '0')}`
 
+// The user's own AI key, added in Settings in step 1. Until then there's no model at all (no makable model either).
+const KEY_ID = '6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b'
+const ai = { key: null }
+function aiAnswer(method, path, body) {
+  if (path === '/ai/providers') return ok([{ id: 'openai', name: 'OpenAI', keysUrl: 'https://platform.openai.com/api-keys' }])
+  if (method === 'GET' && path === '/ai/keys') return ok(ai.key ? [ai.key] : [])
+  if (method === 'GET' && path === '/ai/models') {
+    return ok((ai.key?.models ?? []).map((model) => ({ keyId: KEY_ID, provider: 'openai', model, acceptsImages: false })))
+  }
+  if (method === 'POST' && path === '/ai/keys') {
+    const now = new Date().toISOString()
+    ai.key = { id: KEY_ID, provider: body.provider, keyHint: body.apiKey.slice(-4), status: 'valid', checkedAt: now, models: [], createdAt: now }
+    return { status: 201, body: { success: true, data: { key: ai.key, availableModels: ['gpt-5', 'o4-mini'] } } }
+  }
+  if (method === 'PATCH' && path === `/ai/keys/${KEY_ID}`) {
+    ai.key = { ...ai.key, models: body.models }
+    return ok(ai.key)
+  }
+  return null
+}
+
 function answer(method, path, body, query) {
-  const known = siteAnswer(site, method, path, body)
+  const known = aiAnswer(method, path, body) ?? siteAnswer(site, method, path, body)
   if (known) return known
   if (method === 'POST' && path === '/ai/create') {
     seen.creates.push(body)
@@ -303,15 +324,38 @@ try {
   )
   site.signedIn = true
 
-  // 1. The landing page, signed in, with no sites: the prompt builds one.
+  // 1. The landing page, signed in, with no sites and no AI model yet: the prompt waits in the chat, which asks for an
+  // API key and leads to Settings; once a key is added there, back in the builder the prompt is built with its model.
   await page.goto(BASE_URL)
   await page.getByRole('button', { name: 'Account menu' }).waitFor()
   await page.getByPlaceholder('Describe the site you want to build…').waitFor()
   await shot('landing.png')
   await say(PROMPT)
+  const addKey = page.getByRole('link', { name: 'Add an API key' })
+  await addKey.waitFor()
+  await chatSays(PROMPT)
+  await chatSays('makable runs on your own API key')
+  expect(await composer.isDisabled(), 'the chat waits for a model')
+  await shot('create-needs-key.png')
+  await page.getByRole('button', { name: 'Back' }).click()
+  expect((await composer.inputValue()) === PROMPT, 'Back must put the prompt back in the box')
+  await composer.press('Enter')
+  await addKey.click()
+  await page.getByRole('heading', { name: 'AI models' }).waitFor()
+  await page.getByLabel('API key', { exact: true }).fill('sk-proj-smoke-key-7f3a')
+  await page.getByRole('button', { name: 'Add key' }).click()
+  await page.getByRole('list', { name: 'Models' }).getByLabel('gpt-5').check()
+  await page.getByRole('button', { name: 'Save models' }).click()
+  await page.getByText('In the chat: gpt-5').waitFor()
+  expect(seen.creates.length === 0, 'nothing is built without a model')
+  await page.getByRole('link', { name: 'Back to the builder' }).click()
   // First a question about the site, before its name.
   await chatSays(KIND_QUESTION.question)
   expect(seen.creates[0]?.prompt === PROMPT, `create body: ${JSON.stringify(seen.creates[0])}`)
+  const model = seen.creates[0]?.model
+  expect(model?.keyId === KEY_ID && model?.model === 'gpt-5', `the creation must use the key’s model, got ${JSON.stringify(model)}`)
+  expect((await page.evaluate(() => sessionStorage.getItem('makable:pending-prompt'))) === null, 'a built prompt is forgotten')
+  console.log('✓ no model: the chat asks for an API key, Back edits the prompt, and it’s built once a key is added in Settings')
   await page.getByPlaceholder('Type something else…').waitFor()
   await shot('create-brief.png')
   await page.getByRole('button', { name: 'A landing page', exact: true }).click()
@@ -431,7 +475,7 @@ try {
   await shot('ai-edit.png')
   console.log('✓ AI edit: sent on the saved commit with the selection’s source, tried in the preview, reported ok, committed')
 
-  // What it took, under the reply: one line, the details on a click. The creation's reply (makable's model) has none.
+  // What it took, under the reply: one line, the details on a click. The creation's reply has none (the fake sends none).
   const usageLine = page.getByRole('button', { name: '12s · 12.4k tokens' })
   expect((await usageLine.count()) === 1, 'only the request made with the user’s key says what it took')
   await usageLine.click()

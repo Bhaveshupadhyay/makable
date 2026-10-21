@@ -34,8 +34,19 @@ export function useModelChoice() {
  * itself.
  */
 export function useModelStatus(): ModelStatus {
+  const status = useModelReadiness()
+  return status === 'checking' ? 'ready' : status
+}
+
+/**
+ * `useModelStatus` for a request that goes out by itself (a site waiting to be built): `checking` while the lists
+ * load, so it waits for them to say whether there's a model. A list that failed, or isn't asked for (mock auth),
+ * counts as `ready`: the request then answers for itself.
+ */
+export function useModelReadiness(): ModelStatus | 'checking' {
   const options = useModelOptions()
   const keys = useAiKeys()
-  if (!options.isSuccess || !keys.isSuccess) return 'ready'
-  return modelStatus(options.data, keys.data)
+  if (options.isSuccess && keys.isSuccess) return modelStatus(options.data, keys.data)
+  const loading = (q: typeof options | typeof keys) => q.isPending && q.fetchStatus === 'fetching'
+  return loading(options) || loading(keys) ? 'checking' : 'ready'
 }

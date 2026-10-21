@@ -1,31 +1,34 @@
 const PENDING_PROMPT_KEY = 'makable:pending-prompt'
 
-/** Remembers, across the GitHub sign-in redirect, what a guest asked for on the landing page (null forgets it). */
+const listeners = new Set<() => void>()
+// Also kept here for a browser that blocks storage (the prompt then doesn't outlive a reload).
+let held: string | null = null
+
+/**
+ * Remembers a prompt waiting to be built, across the GitHub sign-in redirect, a trip to Settings for an API key or a
+ * reload (null forgets it).
+ */
 export function savePendingPrompt(text: string | null) {
+  held = text || null
   try {
     if (text) sessionStorage.setItem(PENDING_PROMPT_KEY, text)
     else sessionStorage.removeItem(PENDING_PROMPT_KEY)
   } catch {
-    // Storage blocked: they pick it again after signing in.
+    // Storage blocked: `held` has it until the page goes.
   }
+  for (const listener of listeners) listener()
 }
 
-/** The prompt saved before signing in, left in place (a guest's chat shows it until they sign in). */
+/** The prompt waiting to be built (for a sign-in, or an AI model), left in place until it's built or dropped. */
 export function readPendingPrompt(): string | null {
   try {
     return sessionStorage.getItem(PENDING_PROMPT_KEY)
   } catch {
-    return null
+    return held
   }
 }
 
-/** The prompt saved before signing in, once. */
-export function takePendingPrompt(): string | null {
-  try {
-    const text = sessionStorage.getItem(PENDING_PROMPT_KEY)
-    sessionStorage.removeItem(PENDING_PROMPT_KEY)
-    return text
-  } catch {
-    return null
-  }
+export function subscribePendingPrompt(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
 }

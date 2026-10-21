@@ -1,23 +1,26 @@
 import { ArrowUpRight, LoaderCircle } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useThread } from '@/features/ai-edit'
+import { useModelReadiness } from '@/features/ai-models'
 import { useSession } from '@/features/auth'
 import { Landing } from '@/features/marketing'
 import { useSiteStore } from '@/features/site'
 import { analytics } from '@/shared/lib/analytics'
 import { Button } from '@/shared/ui/button'
 import { CreateView } from '../components/create-view'
-import { GuestChat } from '../components/guest-chat'
 import { HomePrompt } from '../components/home-prompt'
+import { GuestChat, ModelNeededChat } from '../components/waiting-chat'
 import { useSites } from '../hooks/use-sites'
 import { Workspace } from '../components/workspace'
 import { type CreateSite, useCreateSite } from '../hooks/use-create-site'
-import { readPendingPrompt, savePendingPrompt, takePendingPrompt } from '../lib/pending-prompt'
+import { usePendingPrompt } from '../hooks/use-pending-prompt'
+import { savePendingPrompt } from '../lib/pending-prompt'
 import { useSiteChat } from '../store'
 
 /**
- * The home page. Guests get the landing page, and the chat asks them to sign in once they send a prompt. Signed in: the landing page
- * until a site is started, then the chat while it's built, then the chat beside the live preview.
+ * The home page. Guests get the landing page, and the chat asks them to sign in once they send a prompt. Signed in: the
+ * landing page until a site is started (the chat asks for an API key first if there's no AI model to build it), then
+ * the chat while it's built, then the chat beside the live preview.
  */
 export function BuilderPage() {
   const session = useSession()
@@ -60,30 +63,21 @@ export function BuilderPage() {
  * or a failed sign-in brings the chat back.
  */
 function Guest() {
-  const [prompt, setPrompt] = useState(readPendingPrompt)
+  const prompt = usePendingPrompt()
   // Back from the chat: what they asked for goes back in the box.
   const [draft, setDraft] = useState<string>()
 
   function start(text: string) {
-    const asked = text.trim()
-    savePendingPrompt(asked)
+    savePendingPrompt(text.trim())
     analytics.track('github_sign_in_prompted', { reason: 'home' })
-    setPrompt(asked)
   }
 
   function back() {
-    savePendingPrompt(null)
     setDraft(prompt ?? undefined)
-    setPrompt(null)
+    savePendingPrompt(null)
   }
 
-  if (prompt) {
-    return (
-      <div className="h-[calc(100svh-3.5rem)]">
-        <GuestChat prompt={prompt} onBack={back} />
-      </div>
-    )
-  }
+  if (prompt) return <GuestChat prompt={prompt} onBack={back} />
   return (
     <Landing>
       <HomePrompt onStart={start} initialText={draft} />
@@ -100,31 +94,45 @@ function Studio({ login }: { login: string }) {
   const thread = useThread(projectId)
   const chat = useSiteChat(projectId)
   const sites = useSites()
+  const model = useModelReadiness()
   const creating = !!creation.creating
+  // A prompt waiting to be built: a guest's from before they signed in, or one sent with no AI model to build it.
+  // It's in sessionStorage, so it outlives the sign-in redirect, a trip to Settings for an API key and a reload.
+  const waiting = usePendingPrompt()
+  // Back from the chat: what they asked for goes back in the box.
+  const [draft, setDraft] = useState<string>()
 
   // A browser with nothing for this account yet (a new device, cleared data): open their newest site.
   useEffect(() => {
-    if (!autoOpen || site || creating || !sites.isSuccess) return
+    if (!autoOpen || site || creating || waiting || !sites.isSuccess) return
     const newest = sites.data[0]
     if (newest) useSiteStore.getState().open(newest)
     else useSiteStore.setState({ autoOpen: false })
-  }, [autoOpen, site, creating, sites.isSuccess, sites.data])
+  }, [autoOpen, site, creating, waiting, sites.isSuccess, sites.data])
 
-  // What a guest asked for on the landing page before signing in: a new site, once they're back.
-  const pendingChecked = useRef(false)
+  // The waiting prompt becomes a new site once there's a model (its request carries the user's pick).
   useEffect(() => {
-    if (pendingChecked.current) return
-    pendingChecked.current = true
-    const prompt = takePendingPrompt()
-    if (!prompt) return
+    if (!waiting || model !== 'ready') return
+    savePendingPrompt(null)
     const { site, dirty } = useSiteStore.getState()
     // Starting another site drops the open one's unsaved edits: keep that site (its workspace saves them) instead.
     if (site && Object.keys(dirty).length > 0) return
     if (site) useSiteStore.getState().newSite()
     else useSiteStore.setState({ autoOpen: false })
-    creation.start(prompt)
-  }, [creation])
+    creation.start(waiting)
+  }, [waiting, model, creation])
 
+  function back() {
+    setDraft(waiting ?? undefined)
+    savePendingPrompt(null)
+    useSiteStore.setState({ autoOpen: false })
+  }
+
+  if (waiting) {
+    // `ready`: it starts right after this render.
+    if (model === 'checking' || model === 'ready') return <Spinner />
+    return <ModelNeededChat prompt={waiting} status={model} onBack={back} />
+  }
   if (site?.repoName) return <Workspace login={login} />
   const createRun = thread.data?.run?.mode === 'create'
   if (creating || createRun || chat.messages.length > 0 || (thread.data?.turns.length ?? 0) > 0) {
@@ -137,7 +145,7 @@ function Studio({ login }: { login: string }) {
   if (autoOpen && sites.isPending) return <Spinner />
   return (
     <Landing>
-      <HomePrompt onStart={creation.start} busy={creating} />
+      <HomePrompt onStart={(prompt) => savePendingPrompt(prompt.trim())} busy={creating} initialText={draft} />
       <RecentSites creation={creation} />
     </Landing>
   )

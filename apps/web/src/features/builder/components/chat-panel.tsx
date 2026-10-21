@@ -59,7 +59,6 @@ export function ChatPanel({
         <div className="mx-auto max-w-2xl space-y-5">
           {messages.map((message) => (
             <ChatMessage key={message.id} message={message} onUndo={onUndo} undoDisabled={undoDisabled}>
-              {message.widget === 'sign-in-github' && message === latest && <ConnectGithub />}
               {message.widget === 'reconnect-github' && message === latest && <ConnectGithub reconnect />}
               {message === latest && latestExtra}
               {message === latest && repliesEnabled && message.replies && message.replies.length > 0 && (
