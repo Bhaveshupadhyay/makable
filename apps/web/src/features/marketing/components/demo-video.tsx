@@ -8,8 +8,8 @@ import { DemoPlayer } from './demo-player'
 
 /**
  * The product demo, played over the page when the visit's link asks for it (`?utm_source=res` or `resume`, the
- * resume's links). Building needs a GitHub sign-in, which is a lot to ask of someone who only wants to see what
- * makable does.
+ * resume's links), and closed by itself when it ends, to show the site. Building needs a GitHub sign-in, which is a
+ * lot to ask of someone who only wants to see what makable does.
  */
 export function DemoVideo() {
   // Read once: the parameter stays in the address for analytics, and coming back to it mustn't open the demo again.
@@ -21,14 +21,15 @@ export function DemoVideo() {
     if (source) analytics.track('demo_video_shown', { placement: 'dialog', source })
   }, [source])
 
-  function onOpenChange(next: boolean) {
-    if (!next) analytics.track('demo_video_closed', { watched_seconds: Math.round(watched.current.seconds), ended: watched.current.ended })
-    setOpen(next)
+  // By the visitor (the button, Escape, a click outside), or by itself once the video ends, to show the site.
+  function close(reason: 'dismissed' | 'ended') {
+    analytics.track('demo_video_closed', { reason, watched_seconds: Math.round(watched.current.seconds), ended: watched.current.ended })
+    setOpen(false)
   }
 
   if (!source) return null
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={(next) => !next && close('dismissed')}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
         {/* As wide as fits both ways: the video is 16:9, and the title and padding need about 11rem of the height. */}
@@ -50,6 +51,7 @@ export function DemoVideo() {
             }}
             onEnded={() => {
               watched.current.ended = true
+              close('ended')
             }}
           />
           <Dialog.Close asChild>

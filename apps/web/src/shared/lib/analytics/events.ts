@@ -33,8 +33,11 @@ export type AnalyticsEvents = {
   demo_video_played: { placement: 'dialog' | 'landing'; muted: boolean }
   /** Each quarter of it seen (`percent` 25, 50, 75, 100), once per player, counting only what played. */
   demo_video_progress: { placement: 'dialog' | 'landing'; percent: number }
-  /** The dialog was closed. `watched_seconds`: how much of it played, without the parts skipped over. */
-  demo_video_closed: { watched_seconds: number; ended: boolean }
+  /**
+   * The dialog was closed: by the visitor (`dismissed`), or by itself when the video ended (`ended`), to show the site.
+   * `watched_seconds`: how much of it played, without the parts skipped over.
+   */
+  demo_video_closed: { reason: 'dismissed' | 'ended'; watched_seconds: number; ended: boolean }
   /** The video couldn't load or play: `code` is the `MediaError` code (2 network, 3 decode, 4 not supported). */
   demo_video_failed: { placement: 'dialog' | 'landing'; code: number | null; message: string }
 
