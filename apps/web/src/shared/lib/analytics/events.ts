@@ -25,6 +25,11 @@ export type AnalyticsEvents = {
   // Sign-in from the landing page
   github_sign_in_prompted: { reason: string }
 
+  // The product demo, opened by the link on the resume (`?utm_source=res`)
+  demo_video_shown: { source: string }
+  /** `watched_seconds`: the furthest point reached. */
+  demo_video_closed: { watched_seconds: number; ended: boolean }
+
   // Sites built from a prompt
   site_create_started: { prompt: string; model: string }
   site_created: { duration_ms: number; model: string }

@@ -191,6 +191,31 @@ try {
   await page.evaluate(() => sessionStorage.removeItem('makable:pending-prompt'))
   expect(seen.creates.length === 0, 'a guest must not start a creation')
   console.log('✓ guest: types freely; Enter or Send asks to sign in and keeps the prompt')
+
+  // 0b. The resume's link plays the product demo over the page. A browser that won't play sound by itself (headless
+  // Chromium doesn't) plays it muted, with a button to turn the sound on. Other links don't open it.
+  await page.goto(`${BASE_URL}/?utm_source=res`)
+  const demo = page.getByRole('dialog', { name: 'See makable in action' })
+  await demo.waitFor()
+  const video = demo.locator('video')
+  await page.waitForFunction(() => document.querySelector('[role="dialog"] video')?.currentTime > 0.5, null, { timeout: 30_000 })
+  const soundButton = demo.getByRole('button', { name: 'Turn on sound' })
+  if (await video.evaluate((v) => v.muted)) {
+    await soundButton.waitFor()
+    await shot('demo-video.png')
+    await soundButton.click()
+    await soundButton.waitFor({ state: 'detached' })
+    expect(await video.evaluate((v) => !v.muted && !v.paused), 'Turn on sound must unmute the demo and keep it playing')
+  } else await shot('demo-video.png')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await shot('demo-video-mobile.png')
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await demo.getByRole('button', { name: 'Close' }).click()
+  await demo.waitFor({ state: 'detached' })
+  await page.goto(`${BASE_URL}/?utm_source=twitter`)
+  await page.getByPlaceholder('Describe the site you want to build…').waitFor()
+  expect(!(await page.getByRole('dialog').isVisible()), 'only the resume link opens the demo')
+  console.log('✓ the resume link plays the demo (muted until asked), it closes, and other links leave it shut')
   site.signedIn = true
 
   // 1. The landing page, signed in, with no sites: the prompt builds one.
