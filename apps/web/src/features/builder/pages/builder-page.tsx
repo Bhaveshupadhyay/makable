@@ -1,20 +1,22 @@
 import { ArrowUpRight, LoaderCircle } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useThread } from '@/features/ai-edit'
 import { useSession } from '@/features/auth'
 import { Landing } from '@/features/marketing'
 import { useSiteStore } from '@/features/site'
+import { analytics } from '@/shared/lib/analytics'
 import { Button } from '@/shared/ui/button'
 import { CreateView } from '../components/create-view'
+import { GuestChat } from '../components/guest-chat'
 import { HomePrompt } from '../components/home-prompt'
 import { useSites } from '../hooks/use-sites'
 import { Workspace } from '../components/workspace'
 import { type CreateSite, useCreateSite } from '../hooks/use-create-site'
-import { takePendingPrompt } from '../lib/pending-prompt'
+import { readPendingPrompt, savePendingPrompt, takePendingPrompt } from '../lib/pending-prompt'
 import { useSiteChat } from '../store'
 
 /**
- * The home page. Guests get the landing page, whose prompt box asks them to sign in. Signed in: the landing page
+ * The home page. Guests get the landing page, and the chat asks them to sign in once they send a prompt. Signed in: the landing page
  * until a site is started, then the chat while it's built, then the chat beside the live preview.
  */
 export function BuilderPage() {
@@ -48,14 +50,45 @@ export function BuilderPage() {
     )
   }
 
-  if (!user) {
+  if (!user) return <Guest />
+  return <Studio login={user.login} />
+}
+
+/**
+ * A guest's home: the landing page, then the chat once they send a prompt, which asks them to sign in with GitHub
+ * (each site is a repo there). The prompt is kept across the redirect, so it's built once they're back, and a reload
+ * or a failed sign-in brings the chat back.
+ */
+function Guest() {
+  const [prompt, setPrompt] = useState(readPendingPrompt)
+  // Back from the chat: what they asked for goes back in the box.
+  const [draft, setDraft] = useState<string>()
+
+  function start(text: string) {
+    const asked = text.trim()
+    savePendingPrompt(asked)
+    analytics.track('github_sign_in_prompted', { reason: 'home' })
+    setPrompt(asked)
+  }
+
+  function back() {
+    savePendingPrompt(null)
+    setDraft(prompt ?? undefined)
+    setPrompt(null)
+  }
+
+  if (prompt) {
     return (
-      <Landing>
-        <HomePrompt signedIn={false} onStart={() => {}} />
-      </Landing>
+      <div className="h-[calc(100svh-3.5rem)]">
+        <GuestChat prompt={prompt} onBack={back} />
+      </div>
     )
   }
-  return <Studio login={user.login} />
+  return (
+    <Landing>
+      <HomePrompt onStart={start} initialText={draft} />
+    </Landing>
+  )
 }
 
 /** A signed-in user's builder: the site they're on, at whatever stage it is. */
@@ -104,7 +137,7 @@ function Studio({ login }: { login: string }) {
   if (autoOpen && sites.isPending) return <Spinner />
   return (
     <Landing>
-      <HomePrompt signedIn onStart={creation.start} busy={creating} />
+      <HomePrompt onStart={creation.start} busy={creating} />
       <RecentSites creation={creation} />
     </Landing>
   )

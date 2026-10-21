@@ -15,8 +15,8 @@ export type ChatMessage = {
   caption?: string | null
   /** Quick replies. Only the latest message's are offered. */
   replies?: string[]
-  /** Inline UI rendered under the text. */
-  widget?: 'reconnect-github'
+  /** Inline UI rendered under the text: a guest's first sign-in, or signing in again. */
+  widget?: 'sign-in-github' | 'reconnect-github'
   /** An AI change that can be undone: its commit, and whether it was. */
   undo?: { commitSha: string; done: boolean }
   tone?: 'error'

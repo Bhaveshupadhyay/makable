@@ -10,6 +10,15 @@ export function savePendingPrompt(text: string | null) {
   }
 }
 
+/** The prompt saved before signing in, left in place (a guest's chat shows it until they sign in). */
+export function readPendingPrompt(): string | null {
+  try {
+    return sessionStorage.getItem(PENDING_PROMPT_KEY)
+  } catch {
+    return null
+  }
+}
+
 /** The prompt saved before signing in, once. */
 export function takePendingPrompt(): string | null {
   try {

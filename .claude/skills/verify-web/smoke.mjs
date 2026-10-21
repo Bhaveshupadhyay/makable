@@ -172,26 +172,43 @@ const until = async (check, what, timeout = 60_000) => {
 }
 
 try {
-  // 0. A guest types freely; sending asks them to sign in, keeps the text for after sign-in, and sends nothing.
+  // 0. A guest types freely; sending opens the chat, which asks them to sign in with GitHub (what GitHub is a click
+  // away), keeps the prompt for after sign-in, and sends nothing.
   site.signedIn = false
   await page.goto(BASE_URL)
   const guestBox = page.getByPlaceholder('Describe the site you want to build…')
   await guestBox.fill(PROMPT)
-  const signIn = page.getByRole('dialog')
-  expect(!(await signIn.isVisible()), 'typing must not open the sign-in dialog')
+  expect(!(await page.getByRole('button', { name: 'Continue with GitHub' }).isVisible()), 'typing must not ask to sign in')
   await guestBox.press('Enter')
-  await signIn.getByRole('button', { name: 'Continue with GitHub' }).waitFor()
+  await page.getByRole('button', { name: 'Continue with GitHub' }).waitFor()
+  expect(!(await page.getByRole('dialog').isVisible()), 'the guest must get the chat, not a dialog')
+  await chatSays(PROMPT)
+  await chatSays('100% private and 100% yours')
+  expect(await page.getByRole('textbox', { name: 'Message' }).isDisabled(), 'the chat waits for sign-in')
+  expect(!!(await page.getByRole('link', { name: 'Create one for free' }).getAttribute('href')), 'a guest without GitHub gets a sign-up link')
   await shot('sign-in.png')
+  await page.getByRole('button', { name: 'What’s GitHub?' }).click()
+  await page.getByText('like Google Drive, but for code').waitFor()
+  await shot('sign-in-github-explainer.png')
+  await page.keyboard.press('Escape')
+  await page.getByText('like Google Drive, but for code').waitFor({ state: 'detached' })
   const pending = await page.evaluate(() => sessionStorage.getItem('makable:pending-prompt'))
   expect(pending === PROMPT, `the prompt must wait for sign-in (saved ${JSON.stringify(pending)})`)
-  await signIn.getByRole('button', { name: 'Close' }).click()
-  expect((await guestBox.inputValue()) === PROMPT, 'closing the dialog must keep the typed text')
-  await page.getByRole('button', { name: 'Send' }).click()
-  await signIn.getByRole('button', { name: 'Continue with GitHub' }).waitFor()
-  await signIn.getByRole('button', { name: 'Close' }).click()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.reload()
+  await page.getByRole('button', { name: 'Continue with GitHub' }).waitFor()
+  await shot('sign-in-mobile.png')
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.getByRole('button', { name: 'Back' }).click()
+  expect((await guestBox.inputValue()) === PROMPT, 'Back must put the prompt back in the box')
+  expect((await page.evaluate(() => sessionStorage.getItem('makable:pending-prompt'))) === null, 'Back must forget the prompt')
+  await page.getByRole('button', { name: 'A portfolio for a product designer' }).click()
+  await page.getByRole('button', { name: 'Continue with GitHub' }).waitFor()
+  await chatSays('A portfolio for a product designer')
+  await page.getByRole('button', { name: 'Back' }).click()
   await page.evaluate(() => sessionStorage.removeItem('makable:pending-prompt'))
   expect(seen.creates.length === 0, 'a guest must not start a creation')
-  console.log('✓ guest: types freely; Enter or Send asks to sign in and keeps the prompt')
+  console.log('✓ guest: types freely; sending opens the chat asking to sign in with GitHub (with What’s GitHub?), keeps the prompt over a reload, Back edits it')
 
   // 0b. The resume's link plays the product demo over the page. A browser that won't play sound by itself (headless
   // Chromium doesn't) plays it muted, with a button to turn the sound on. Other links don't open it.
