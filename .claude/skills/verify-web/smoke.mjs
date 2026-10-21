@@ -154,6 +154,20 @@ function answer(method, path, body, query) {
 const browser = await launch()
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
 const errors = watchErrors(page)
+// The analytics events, read from the console logger (start the dev server with VITE_ANALYTICS_DEBUG=true; without
+// it nothing is logged and the event checks are skipped).
+const events = []
+page.on('console', (m) => {
+  if (!m.text().startsWith('%c[analytics]')) return
+  Promise.all(m.args().map((arg) => arg.jsonValue().catch(() => null))).then(([, , name, props]) => events.push({ name, props }))
+})
+async function expectEvent(name, match = {}) {
+  if (!events.length) return
+  const seenIt = () => events.some((e) => e.name === name && Object.entries(match).every(([k, v]) => e.props?.[k] === v))
+  for (const deadline = Date.now() + 5_000; !seenIt(); await new Promise((r) => setTimeout(r, 100))) {
+    expect(Date.now() < deadline, `analytics: no ${name} ${JSON.stringify(match)} (seen: ${[...new Set(events.map((e) => e.name))].join(', ')})`)
+  }
+}
 await routeBackend(page, answer)
 const shot = (name) => page.screenshot({ path: join(OUT_DIR, name) })
 const frame = page.frameLocator('iframe[title="Site preview"]')
@@ -193,7 +207,7 @@ try {
   expect(seen.creates.length === 0, 'a guest must not start a creation')
   console.log('✓ guest: types freely; Enter or Send asks to sign in and keeps the prompt')
 
-  // 0b. The resume's link plays the product demo over the page. A browser that won't play sound by itself (headless
+  // 0b. The resume's links play the product demo over the page. A browser that won't play sound by itself (headless
   // Chromium doesn't) plays it muted, with a button to turn the sound on. Other links don't open it.
   await page.goto(`${BASE_URL}/?utm_source=res`)
   const demo = page.getByRole('dialog', { name: 'See makable in action' })
@@ -201,6 +215,8 @@ try {
   const video = demo.locator('video')
   const demoPlays = () => page.waitForFunction(() => document.querySelector('[role="dialog"] video')?.currentTime > 0.5, null, { timeout: 30_000 })
   await demoPlays()
+  await expectEvent('demo_video_shown', { placement: 'dialog', source: 'res' })
+  await expectEvent('demo_video_played', { placement: 'dialog' })
   const soundButton = demo.getByRole('button', { name: 'Turn on sound' })
   if (await video.evaluate((v) => v.muted)) {
     await soundButton.waitFor()
@@ -214,21 +230,56 @@ try {
   await page.setViewportSize({ width: 1280, height: 900 })
   await demo.getByRole('button', { name: 'Close' }).click()
   await demo.waitFor({ state: 'detached' })
+  await expectEvent('demo_video_closed')
+  await page.goto(`${BASE_URL}/?utm_source=resume`)
+  await demo.waitFor()
+  await demoPlays()
+  await expectEvent('demo_video_shown', { placement: 'dialog', source: 'resume' })
+  await demo.getByRole('button', { name: 'Close' }).click()
+  await demo.waitFor({ state: 'detached' })
   await page.goto(`${BASE_URL}/?utm_source=twitter`)
   await page.getByPlaceholder('Describe the site you want to build…').waitFor()
-  expect(!(await page.getByRole('dialog').isVisible()), 'only the resume link opens the demo')
+  expect(!(await page.getByRole('dialog').isVisible()), 'only the resume links open the demo')
+  // The landing page has it too, under how it works: its poster until it's played, nothing loaded before.
+  const landingDemo = page.locator('figure[data-analytics-section="demo_landing"]')
+  const landingVideo = landingDemo.locator('video')
+  expect(
+    await landingVideo.evaluate((v) => v.paused && v.preload === 'none' && v.readyState === 0 && v.poster.endsWith('/demo-poster.jpg')),
+    'the landing demo must wait for a click, showing its poster and loading nothing',
+  )
+  const stepsBottom = await page.getByRole('heading', { name: 'Edit and publish' }).evaluate((el) => el.closest('li').getBoundingClientRect().bottom)
+  expect((await landingDemo.boundingBox()).y > stepsBottom, 'the landing demo must sit under the how-it-works steps')
+  await landingDemo.scrollIntoViewIfNeeded()
+  await expectEvent('demo_video_shown', { placement: 'landing' })
+  await shot('landing-demo.png')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await landingDemo.scrollIntoViewIfNeeded()
+  await shot('landing-demo-mobile.png')
+  await page.setViewportSize({ width: 1280, height: 900 })
+  // Its play button plays it (with sound: the click allows it); played fast to the end, each quarter seen is reported.
+  const watchDemo = landingDemo.getByRole('button', { name: 'Watch the demo · 1 min' })
+  await watchDemo.click()
+  await watchDemo.waitFor({ state: 'detached' })
+  await page.waitForFunction(() => document.querySelector('figure video')?.currentTime > 0.5, null, { timeout: 30_000 })
+  await expectEvent('demo_video_played', { placement: 'landing', muted: false })
+  await landingVideo.evaluate((v) => (v.playbackRate = 16))
+  await page.waitForFunction(() => document.querySelector('figure video')?.ended, null, { timeout: 60_000 })
+  for (const percent of [25, 50, 75, 100]) await expectEvent('demo_video_progress', { placement: 'landing', percent })
   // A video that can't load says so, and Try again plays it once it's back.
   await page.route(DEMO_VIDEO, (route) => route.fulfill({ status: 404 }))
   await page.goto(`${BASE_URL}/?utm_source=res`)
   await demo.getByRole('alert').getByText('The demo couldn’t load').waitFor()
   expect(!(await soundButton.isVisible()), 'a demo that failed must not offer sound')
+  await expectEvent('demo_video_failed', { placement: 'dialog' })
   await shot('demo-video-failed.png')
   await page.unroute(DEMO_VIDEO)
   await demo.getByRole('button', { name: 'Try again' }).click()
   await demo.getByRole('alert').waitFor({ state: 'detached' })
   await demoPlays()
   await demo.getByRole('button', { name: 'Close' }).click()
-  console.log('✓ the resume link plays the demo (muted until asked), it closes, other links leave it shut, and a failed load can be tried again')
+  console.log(
+    `✓ the resume links (res, resume) play the demo (muted until asked), it closes, other links leave it shut, a failed load can be tried again; the landing page plays it on a click${events.length ? ', and every step is tracked' : ' (events not checked: VITE_ANALYTICS_DEBUG is off)'}`,
+  )
   site.signedIn = true
 
   // 1. The landing page, signed in, with no sites: the prompt builds one.
