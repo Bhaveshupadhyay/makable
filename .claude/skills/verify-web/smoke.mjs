@@ -232,18 +232,26 @@ try {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.reload()
   await page.getByRole('button', { name: 'Continue with GitHub' }).waitFor()
+  await chatSays(PROMPT)
   await shot('sign-in-mobile.png')
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.getByRole('button', { name: 'Back' }).click()
   expect((await guestBox.inputValue()) === PROMPT, 'Back must put the prompt back in the box')
   expect((await page.evaluate(() => sessionStorage.getItem('makable:pending-prompt'))) === null, 'Back must forget the prompt')
+  // A description longer than the request allows stays in the box, says why, and isn't kept for after sign-in.
+  const tooLong = 'x'.repeat(4213)
+  await guestBox.fill(tooLong)
+  await guestBox.press('Enter')
+  await page.getByRole('alert').getByText('Keep the description under 4,000 characters (it’s 4,213).').waitFor()
+  expect((await guestBox.inputValue()) === tooLong, 'a refused description must stay in the box')
+  expect((await page.evaluate(() => sessionStorage.getItem('makable:pending-prompt'))) === null, 'a refused description must not be kept')
   await page.getByRole('button', { name: 'A portfolio for a product designer' }).click()
   await page.getByRole('button', { name: 'Continue with GitHub' }).waitFor()
   await chatSays('A portfolio for a product designer')
   await page.getByRole('button', { name: 'Back' }).click()
   await page.evaluate(() => sessionStorage.removeItem('makable:pending-prompt'))
   expect(seen.creates.length === 0, 'a guest must not start a creation')
-  console.log('✓ guest: types freely; sending opens the chat asking to sign in with GitHub (with What’s GitHub?), keeps the prompt over a reload, Back edits it')
+  console.log('✓ guest: types freely; sending opens the chat asking to sign in with GitHub (with What’s GitHub?), keeps the prompt over a reload, Back edits it; a too-long description stays in the box')
 
   // 0b. The resume's links play the product demo over the page. A browser that won't play sound by itself (headless
   // Chromium doesn't) plays it muted, with a button to turn the sound on. Other links don't open it.

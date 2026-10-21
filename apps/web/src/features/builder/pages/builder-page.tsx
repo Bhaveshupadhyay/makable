@@ -113,13 +113,12 @@ function Studio({ login }: { login: string }) {
   // The waiting prompt becomes a new site once there's a model (its request carries the user's pick).
   useEffect(() => {
     if (!waiting || model !== 'ready') return
+    // Taken now, so it's started once: one the request refuses (too long) is left in the chat with why.
     savePendingPrompt(null)
     const { site, dirty } = useSiteStore.getState()
     // Starting another site drops the open one's unsaved edits: keep that site (its workspace saves them) instead.
     if (site && Object.keys(dirty).length > 0) return
-    if (site) useSiteStore.getState().newSite()
-    else useSiteStore.setState({ autoOpen: false })
-    creation.start(waiting)
+    creation.start(waiting, { fresh: true })
   }, [waiting, model, creation])
 
   function back() {

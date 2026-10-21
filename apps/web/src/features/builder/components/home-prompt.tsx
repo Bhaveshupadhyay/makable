@@ -1,4 +1,6 @@
 import { ArrowUpRight } from 'lucide-react'
+import { useState } from 'react'
+import { promptProblem } from '../lib/prompt'
 import { Composer } from './composer'
 
 // Starting points: each one is sent as the prompt.
@@ -13,17 +15,32 @@ type HomePromptProps = {
 
 /** The landing page's prompt box: the description of the site to build, typed or picked from the ideas. */
 export function HomePrompt({ onStart, busy = false, initialText }: HomePromptProps) {
+  const [problem, setProblem] = useState<string | null>(null)
+
+  // A description the request would refuse stays in the box to shorten, so it's never kept for after sign-in.
+  function send(prompt: string) {
+    const why = promptProblem(prompt)
+    setProblem(why)
+    if (why) return false
+    onStart(prompt)
+  }
+
   return (
     <div className="mx-auto w-full max-w-2xl space-y-4">
       <div className="rounded-3xl bg-linear-to-br from-[#FF2E63]/40 via-[#FF9500]/30 to-[#8B5CF6]/40 p-px shadow-lg shadow-[#FF3366]/10">
         <Composer
-          onSend={onStart}
+          onSend={send}
           disabled={busy}
           initialText={initialText}
           placeholder="Describe the site you want to build…"
           className="rounded-[calc(1.5rem-1px)] border-0 p-3 shadow-none [&_textarea]:min-h-16 [&_textarea]:text-base"
         />
       </div>
+      {problem && (
+        <p role="alert" className="text-sm text-destructive">
+          {problem}
+        </p>
+      )}
       <div className="flex flex-wrap justify-center gap-2">
         {IDEAS.map((idea) => (
           <button
