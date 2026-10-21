@@ -1,6 +1,7 @@
 import { ArrowRight, Code, GitBranch, KeyRound, MessageSquare, MousePointerClick, Rocket, Sparkles } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { useMediaQuery } from '@/shared/hooks/use-media-query'
+import { LandingDemo } from './landing-demo'
 import { RotatingWord } from './rotating-word'
 import { SiteFooter } from './site-footer'
 
@@ -70,6 +71,7 @@ export function Landing({ children }: { children: ReactNode }) {
               </li>
             ))}
           </ol>
+          <LandingDemo />
         </div>
       </section>
 
