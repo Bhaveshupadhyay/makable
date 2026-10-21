@@ -13,6 +13,7 @@ const KIND_QUESTION = { question: 'What kind of site is it?', options: ['A landi
 const NAME_REPLY = "It becomes your site's title and its repository's name on your GitHub, so anything works. What should we call it?"
 const COLOUR_QUESTION = { question: 'Which colour should the buttons be?', options: ['#e11d48', '#2563eb'], allowFreeText: true }
 const WEEKEND = '<p className="mt-2 text-amber-800">Open weekends 8–2</p>'
+const DEMO_VIDEO = 'https://pub-4a29d5bc45754e1e9ab37c133e4e92b9.r2.dev/mak.mp4'
 // What an AI request took, as the server sends it for the user's own key.
 const USAGE = {
   modelCalls: 2,
@@ -198,7 +199,8 @@ try {
   const demo = page.getByRole('dialog', { name: 'See makable in action' })
   await demo.waitFor()
   const video = demo.locator('video')
-  await page.waitForFunction(() => document.querySelector('[role="dialog"] video')?.currentTime > 0.5, null, { timeout: 30_000 })
+  const demoPlays = () => page.waitForFunction(() => document.querySelector('[role="dialog"] video')?.currentTime > 0.5, null, { timeout: 30_000 })
+  await demoPlays()
   const soundButton = demo.getByRole('button', { name: 'Turn on sound' })
   if (await video.evaluate((v) => v.muted)) {
     await soundButton.waitFor()
@@ -215,7 +217,18 @@ try {
   await page.goto(`${BASE_URL}/?utm_source=twitter`)
   await page.getByPlaceholder('Describe the site you want to build…').waitFor()
   expect(!(await page.getByRole('dialog').isVisible()), 'only the resume link opens the demo')
-  console.log('✓ the resume link plays the demo (muted until asked), it closes, and other links leave it shut')
+  // A video that can't load says so, and Try again plays it once it's back.
+  await page.route(DEMO_VIDEO, (route) => route.fulfill({ status: 404 }))
+  await page.goto(`${BASE_URL}/?utm_source=res`)
+  await demo.getByRole('alert').getByText('The demo couldn’t load').waitFor()
+  expect(!(await soundButton.isVisible()), 'a demo that failed must not offer sound')
+  await shot('demo-video-failed.png')
+  await page.unroute(DEMO_VIDEO)
+  await demo.getByRole('button', { name: 'Try again' }).click()
+  await demo.getByRole('alert').waitFor({ state: 'detached' })
+  await demoPlays()
+  await demo.getByRole('button', { name: 'Close' }).click()
+  console.log('✓ the resume link plays the demo (muted until asked), it closes, other links leave it shut, and a failed load can be tried again')
   site.signedIn = true
 
   // 1. The landing page, signed in, with no sites: the prompt builds one.

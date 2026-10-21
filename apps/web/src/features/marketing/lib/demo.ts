@@ -9,3 +9,10 @@ export function demoSource(search: string): string | null {
   const source = new URLSearchParams(search).get('utm_source')?.trim().toLowerCase()
   return source && DEMO_SOURCES.has(source) ? source : null
 }
+
+/** Seconds of the video seen: what has played, without the parts skipped over or counting the parts seen twice. */
+export function playedSeconds(played: Pick<TimeRanges, 'length' | 'start' | 'end'>): number {
+  let seconds = 0
+  for (let i = 0; i < played.length; i++) seconds += played.end(i) - played.start(i)
+  return seconds
+}

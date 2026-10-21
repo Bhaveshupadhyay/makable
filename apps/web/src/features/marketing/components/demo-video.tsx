@@ -1,9 +1,9 @@
-import { Volume2, X } from 'lucide-react'
+import { RotateCcw, Volume2, X } from 'lucide-react'
 import { Dialog } from 'radix-ui'
 import { useEffect, useRef, useState } from 'react'
 import { analytics } from '@/shared/lib/analytics'
 import { Button } from '@/shared/ui/button'
-import { DEMO_VIDEO_URL, demoSource } from '../lib/demo'
+import { DEMO_VIDEO_URL, demoSource, playedSeconds } from '../lib/demo'
 
 /**
  * The product demo, played over the page when the visit's link asks for it (`?utm_source=res`, the resume's link).
@@ -38,8 +38,8 @@ export function DemoVideo() {
             </Dialog.Description>
           </div>
           <DemoPlayer
-            onTime={(seconds) => {
-              watched.current.seconds = Math.max(watched.current.seconds, seconds)
+            onWatched={(seconds) => {
+              watched.current.seconds = seconds
             }}
             onEnded={() => {
               watched.current.ended = true
@@ -57,26 +57,23 @@ export function DemoVideo() {
 }
 
 type DemoPlayerProps = {
-  /** The playback position, in seconds, as it plays. */
-  onTime: (seconds: number) => void
+  /** How much of the video has played, in seconds, as it plays. */
+  onWatched: (seconds: number) => void
   onEnded: () => void
 }
 
-/** Plays as soon as it opens: with sound where the browser allows it, else muted with a button to turn it on. */
-function DemoPlayer({ onTime, onEnded }: DemoPlayerProps) {
+/**
+ * Plays as soon as it opens: with sound where the browser allows it, else muted with a button to turn it on. A video
+ * that can't load (the network, the host) says so and can be tried again.
+ */
+function DemoPlayer({ onWatched, onEnded }: DemoPlayerProps) {
   const ref = useRef<HTMLVideoElement>(null)
   const [muted, setMuted] = useState(false)
+  const [paused, setPaused] = useState(true)
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
-    const video = ref.current
-    if (!video) return
-    video.play().catch((error: unknown) => {
-      // Browsers only play sound by themselves once the visitor has interacted with the site.
-      if (!(error instanceof DOMException) || error.name !== 'NotAllowedError') return
-      video.muted = true
-      // Refused even muted (iOS in low-power mode, for one): the controls' play button is still there.
-      video.play().catch(() => {})
-    })
+    if (ref.current) autoplay(ref.current)
   }, [])
 
   function turnOnSound() {
@@ -85,6 +82,14 @@ function DemoPlayer({ onTime, onEnded }: DemoPlayerProps) {
     video.muted = false
     // A click lets it play with sound, also when it couldn't start by itself.
     video.play().catch(() => {})
+  }
+
+  function tryAgain() {
+    const video = ref.current
+    if (!video) return
+    setFailed(false)
+    video.load()
+    autoplay(video)
   }
 
   return (
@@ -97,15 +102,42 @@ function DemoPlayer({ onTime, onEnded }: DemoPlayerProps) {
         preload="auto"
         className="aspect-video w-full"
         onVolumeChange={(e) => setMuted(e.currentTarget.muted)}
-        onTimeUpdate={(e) => onTime(e.currentTarget.currentTime)}
+        onPlay={() => setPaused(false)}
+        onPause={() => setPaused(true)}
+        onTimeUpdate={(e) => onWatched(playedSeconds(e.currentTarget.played))}
         onEnded={onEnded}
+        onError={(e) => {
+          const error = e.currentTarget.error
+          analytics.track('demo_video_failed', { code: error?.code ?? null, message: error?.message ?? '' })
+          setFailed(true)
+        }}
       />
-      {muted && (
+      {muted && !failed && (
         <Button size="sm" variant="secondary" className="absolute top-3 left-3 shadow-md" onClick={turnOnSound}>
           <Volume2 />
-          Turn on sound
+          {paused ? 'Play with sound' : 'Turn on sound'}
         </Button>
+      )}
+      {failed && (
+        <div role="alert" className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 p-4 text-center text-sm text-white">
+          <p>The demo couldn’t load. Check your connection and try again.</p>
+          <Button size="sm" variant="secondary" onClick={tryAgain}>
+            <RotateCcw />
+            Try again
+          </Button>
+        </div>
       )}
     </div>
   )
+}
+
+/** Plays with sound where the browser allows it, else muted. Refused even muted (iOS in low-power mode), it waits for a click. */
+function autoplay(video: HTMLVideoElement) {
+  video.play().catch((error: unknown) => {
+    // Browsers only play sound by themselves once the visitor has interacted with the site. Other refusals (the
+    // video can't load) come with the element's `error` event.
+    if (!(error instanceof DOMException) || error.name !== 'NotAllowedError') return
+    video.muted = true
+    video.play().catch(() => {})
+  })
 }
