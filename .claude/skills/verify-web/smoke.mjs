@@ -230,13 +230,16 @@ try {
   await page.setViewportSize({ width: 1280, height: 900 })
   await demo.getByRole('button', { name: 'Close' }).click()
   await demo.waitFor({ state: 'detached' })
-  await expectEvent('demo_video_closed')
+  await expectEvent('demo_video_closed', { reason: 'dismissed', ended: false })
+  // Once the video ends, the dialog closes by itself and shows the site.
   await page.goto(`${BASE_URL}/?utm_source=resume`)
   await demo.waitFor()
   await demoPlays()
   await expectEvent('demo_video_shown', { placement: 'dialog', source: 'resume' })
-  await demo.getByRole('button', { name: 'Close' }).click()
-  await demo.waitFor({ state: 'detached' })
+  await video.evaluate((v) => (v.currentTime = v.duration - 1))
+  await demo.waitFor({ state: 'detached', timeout: 10_000 })
+  await page.getByPlaceholder('Describe the site you want to build…').waitFor()
+  await expectEvent('demo_video_closed', { reason: 'ended', ended: true })
   await page.goto(`${BASE_URL}/?utm_source=twitter`)
   await page.getByPlaceholder('Describe the site you want to build…').waitFor()
   expect(!(await page.getByRole('dialog').isVisible()), 'only the resume links open the demo')
@@ -263,7 +266,8 @@ try {
   await page.waitForFunction(() => document.querySelector('figure video')?.currentTime > 0.5, null, { timeout: 30_000 })
   await expectEvent('demo_video_played', { placement: 'landing', muted: false })
   await landingVideo.evaluate((v) => (v.playbackRate = 16))
-  await page.waitForFunction(() => document.querySelector('figure video')?.ended, null, { timeout: 60_000 })
+  // At 16× it plays faster than the 33 MB video downloads, so the time it takes is the network's: give it room.
+  await page.waitForFunction(() => document.querySelector('figure video')?.ended, null, { timeout: 120_000 })
   for (const percent of [25, 50, 75, 100]) await expectEvent('demo_video_progress', { placement: 'landing', percent })
   // A video that can't load says so, and Try again plays it once it's back.
   await page.route(DEMO_VIDEO, (route) => route.fulfill({ status: 404 }))
@@ -278,7 +282,7 @@ try {
   await demoPlays()
   await demo.getByRole('button', { name: 'Close' }).click()
   console.log(
-    `✓ the resume links (res, resume) play the demo (muted until asked), it closes, other links leave it shut, a failed load can be tried again; the landing page plays it on a click${events.length ? ', and every step is tracked' : ' (events not checked: VITE_ANALYTICS_DEBUG is off)'}`,
+    `✓ the resume links (res, resume) play the demo (muted until asked), it closes (by itself once it ends), other links leave it shut, a failed load can be tried again; the landing page plays it on a click${events.length ? ', and every step is tracked' : ' (events not checked: VITE_ANALYTICS_DEBUG is off)'}`,
   )
   site.signedIn = true
 
