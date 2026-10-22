@@ -2,7 +2,7 @@ import { Suspense } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router'
 import { AboutPage } from '@/features/marketing'
 import { AppLayout } from './layouts/app-layout'
-import { AiSettingsPage, BuilderPage } from './lazy-pages'
+import { AiSettingsPage, AnalyticsPage, BuilderPage } from './lazy-pages'
 
 // No sign-in wall: the builder works for guests, and the chat asks them to connect
 // GitHub only when they reach a feature that needs it.
@@ -21,6 +21,14 @@ export const router = createBrowserRouter([
       {
         path: 'about',
         element: <AboutPage />,
+      },
+      {
+        path: 'analytics/:projectId',
+        element: (
+          <Suspense>
+            <AnalyticsPage />
+          </Suspense>
+        ),
       },
       {
         path: 'settings',
