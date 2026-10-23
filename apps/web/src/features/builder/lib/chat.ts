@@ -1,5 +1,6 @@
 import type { AiUsage } from '@makable/shared'
 import type { AiPausedRun, AiThread } from '@/features/ai-edit'
+import type { ModelStatus } from '@/features/ai-models'
 import type { PublishFlow } from './publish-flow'
 
 // The chat beside the site: the site's AI thread from the server (requests, questions, what the AI did), with the
@@ -15,8 +16,8 @@ export type ChatMessage = {
   caption?: string | null
   /** Quick replies. Only the latest message's are offered. */
   replies?: string[]
-  /** Inline UI rendered under the text. */
-  widget?: 'reconnect-github'
+  /** Inline UI rendered under the text: sign in to GitHub again, or the way to Settings for an API key. */
+  widget?: 'reconnect-github' | 'add-api-key'
   /** An AI change that can be undone: its commit, and whether it was. */
   undo?: { commitSha: string; done: boolean }
   tone?: 'error'
@@ -81,6 +82,21 @@ export function buildChat(thread: AiThread | null, local: LocalChat, undone: rea
   // A stable sort: the thread's messages keep their order among themselves, and so do the browser's.
   return [...fromThread, ...local.messages].sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
 }
+
+const MODEL_NEEDED: Record<Exclude<ModelStatus, 'ready'>, string> = {
+  'no-key':
+    'Your API key isn’t connected yet, so I can’t work on this. makable runs on your own API key: it’s like a password ' +
+    'from an AI provider (OpenAI, Google Gemini, Groq and more) that lets makable use their AI on your account.\n\n' +
+    'Connect one in Settings, then send your message again.',
+  'no-models': 'Your API key is connected, but no model is chosen for makable yet. Choose one in Settings, then send your message again.',
+  'key-invalid':
+    'Your API key stopped working, so I can’t work on this. Connect a new one, or check it again, in Settings, then send ' +
+    'your message again.',
+}
+
+/** makable's reply to a message sent with no AI model to answer it: what's missing, and the way to Settings. */
+export const modelNeededReply = (status: Exclude<ModelStatus, 'ready'>, extra: Partial<ChatMessage> = {}): ChatMessage =>
+  assistant(MODEL_NEEDED[status], { widget: 'add-api-key', ...extra })
 
 function replyFor(outcome: string): string {
   switch (outcome) {

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { AiThread } from '@/features/ai-edit'
-import { assistant, buildChat, pausedRunChat } from './chat'
+import { assistant, buildChat, modelNeededReply, pausedRunChat } from './chat'
 
 const thread: AiThread = {
   projectId: 'p',
@@ -78,4 +78,13 @@ test("what a request took goes under the AI's reply, when the server sent it", (
 
   expect(chat.find((m) => m.text === 'Pink now.')?.usage).toEqual(usage)
   expect(chat.filter((m) => m.usage)).toHaveLength(1)
+})
+
+test('a message sent with no AI model gets a reply that leads to Settings, for what is missing', () => {
+  const noKey = modelNeededReply('no-key', { replies: ['Try again'] })
+
+  expect(noKey).toMatchObject({ role: 'assistant', widget: 'add-api-key', replies: ['Try again'] })
+  expect(noKey.text).toStartWith('Your API key isn’t connected yet')
+  expect(modelNeededReply('no-models').text).toContain('no model is chosen')
+  expect(modelNeededReply('key-invalid').text).toContain('stopped working')
 })
