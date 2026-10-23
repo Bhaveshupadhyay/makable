@@ -14,6 +14,8 @@ const NAME_REPLY = "It becomes your site's title and its repository's name on yo
 const COLOUR_QUESTION = { question: 'Which colour should the buttons be?', options: ['#e11d48', '#2563eb'], allowFreeText: true }
 const WEEKEND = '<p className="mt-2 text-amber-800">Open weekends 8–2</p>'
 const DEMO_VIDEO = 'https://pub-4a29d5bc45754e1e9ab37c133e4e92b9.r2.dev/mak.mp4'
+// Its backup on Google Drive, in Drive's player, for when R2 can't serve it.
+const DEMO_BACKUP = 'https://drive.google.com/file/d/1Y6S0sqxlCCJJvUxavzmWfTVEvyznqkTL/preview'
 // What an AI request took, as the server sends it for the user's own key.
 const USAGE = {
   modelCalls: 2,
@@ -269,20 +271,20 @@ try {
   // At 16× it plays faster than the 33 MB video downloads, so the time it takes is the network's: give it room.
   await page.waitForFunction(() => document.querySelector('figure video')?.ended, null, { timeout: 120_000 })
   for (const percent of [25, 50, 75, 100]) await expectEvent('demo_video_progress', { placement: 'landing', percent })
-  // A video that can't load says so, and Try again plays it once it's back.
+  // With R2 down, the backup on Google Drive shows in its place, in Drive's player.
   await page.route(DEMO_VIDEO, (route) => route.fulfill({ status: 404 }))
   await page.goto(`${BASE_URL}/?utm_source=res`)
-  await demo.getByRole('alert').getByText('The demo couldn’t load').waitFor()
-  expect(!(await soundButton.isVisible()), 'a demo that failed must not offer sound')
+  const backup = demo.locator('iframe[title="makable demo"]')
+  await backup.waitFor()
+  expect((await backup.getAttribute('src')) === DEMO_BACKUP, 'with R2 down, the demo must show the Google Drive backup')
+  expect((await video.count()) === 0 && !(await soundButton.isVisible()), 'the backup takes the video’s place')
   await expectEvent('demo_video_failed', { placement: 'dialog' })
-  await shot('demo-video-failed.png')
+  await page.frameLocator('[role="dialog"] iframe').locator('body').waitFor({ state: 'attached' })
+  await shot('demo-video-backup.png')
   await page.unroute(DEMO_VIDEO)
-  await demo.getByRole('button', { name: 'Try again' }).click()
-  await demo.getByRole('alert').waitFor({ state: 'detached' })
-  await demoPlays()
   await demo.getByRole('button', { name: 'Close' }).click()
   console.log(
-    `✓ the resume links (res, resume) play the demo (muted until asked), it closes (by itself once it ends), other links leave it shut, a failed load can be tried again; the landing page plays it on a click${events.length ? ', and every step is tracked' : ' (events not checked: VITE_ANALYTICS_DEBUG is off)'}`,
+    `✓ the resume links (res, resume) play the demo (muted until asked), it closes (by itself once it ends), other links leave it shut, with R2 down the Google Drive backup shows; the landing page plays it on a click${events.length ? ', and every step is tracked' : ' (events not checked: VITE_ANALYTICS_DEBUG is off)'}`,
   )
   site.signedIn = true
 
