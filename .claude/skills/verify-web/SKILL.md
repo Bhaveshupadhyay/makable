@@ -1,6 +1,6 @@
 ---
 name: verify-web
-description: Run the makable builder SPA in a headless browser and smoke-test the real UI (a guest is asked to sign in → a site is created from a prompt → live Sandpack preview → text edits, AI edits, the code view → publishing) against a scripted makable-backend. Use after UI changes in apps/web, before reporting a feature as done.
+description: Run the makable builder SPA in a headless browser and smoke-test the real UI (a guest's chat asks them to sign in → a site is created from a prompt → live Sandpack preview → text edits, AI edits, the code view → publishing) against a scripted makable-backend. Use after UI changes in apps/web, before reporting a feature as done.
 ---
 
 # Smoke-test the builder UI in headless Chromium
@@ -30,14 +30,14 @@ reaches GitHub, a model or a hosting platform. Test those by hand with the backe
 4. **Look at the screenshots** with the Read tool. Check the layout, not just the assertions.
 5. **Stop the dev server:** `pkill -f 'vite --port 5199'`.
 
-**`smoke.mjs`** (the builder): a guest can type in the prompt box, and Enter or Send asks them to sign in (the text kept in the box and for after sign-in); the resume's links (`?utm_source=res` and `resume`) play the product demo over the page (muted until **Turn on sound**, since headless Chromium won't play sound by itself), it closes by itself when the video ends, showing the site, other links don't open it, and a video that can't load says so and plays on **Try again**; the landing page has the demo under how it works (its poster, nothing loaded until **Watch the demo** plays it); each step's analytics event (shown, played, every quarter seen, closed, failed) is checked; signed in with no sites, the landing prompt
+**`smoke.mjs`** (the builder): a guest can type in the prompt box, and Enter, Send or an idea opens the chat asking them to sign in with GitHub (no dialog; **What’s GitHub?** explains it, a sign-up link, the composer disabled; the prompt kept for after sign-in and over a reload; **Back** puts it in the box again; one too long stays in the box with why); the resume's links (`?utm_source=res` and `resume`) play the product demo over the page (muted until **Turn on sound**, since headless Chromium won't play sound by itself), it closes by itself when the video ends, showing the site, other links don't open it, and a video that can't load says so and plays on **Try again**; the landing page has the demo under how it works (its poster, nothing loaded until **Watch the demo** plays it); each step's analytics event (shown, played, every quarter seen, closed, failed) is checked; signed in with no sites and no AI model, the landing prompt waits in a chat that asks for an API key (Back edits it; the key added and a model chosen in Settings, back in the builder it's built with that model); then the landing prompt
 starts a creation (NDJSON stream), which asks for the name ("Chat about this" sends a message about the question, the conversation staying on screen while it's sent, and the AI's reply asks again), then shows its progress and opens the site in the preview
 (elements tagged with `data-src`); Edit text patches the source and Save now commits it on the site's commit; an AI
 edit on a selected element goes out on the saved commit with the element's place in the code (while the AI works, the chat and the AI box say "Thinking…" with the time so far ticking), is tried in the preview,
 reported ok and committed (what it took, sent for the user's own key, under the reply, its details on a click), then undone; an AI question is answered with an option (while a question waits, its answers take the composer's place); an AI change that breaks the preview
 is reported with the error and taken back out; the code view edits (unsaved count) and keeps makable's files read-only;
 GitHub Pages publishing asks before making the repo public, saves first and follows the deploy until live; a phone
-layout; and a new browser opens the newest site by itself. Screenshots: `sign-in.png`, `demo-video.png`, `demo-video-mobile.png`, `landing-demo.png`, `landing-demo-mobile.png`, `demo-video-failed.png`, `landing.png`,
+layout; and a new browser opens the newest site by itself. Screenshots: `sign-in.png`, `sign-in-github-explainer.png`, `sign-in-mobile.png`, `demo-video.png`, `demo-video-mobile.png`, `landing-demo.png`, `landing-demo-mobile.png`, `demo-video-failed.png`, `landing.png`, `create-needs-key.png`,
 `create-brief.png`, `create-name.png`, `create-name-chat-open.png`, `create-name-chat-sending.png`, `create-name-chat.png`, `create-steps.png`, `workspace.png`, `ai-edit-popover.png`, `ai-thinking.png`, `ai-edit.png`, `ai-usage.png`, `ai-question.png`, `code-view.png`,
 `publish-live.png`, `workspace-mobile.png`.
 

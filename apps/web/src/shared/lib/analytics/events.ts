@@ -81,6 +81,8 @@ export type AnalyticsEvents = {
   code_file_opened: { path: string; modified: boolean }
 
   // AI models (bring your own key)
+  /** The chat asked for a key (or a model) before building a site: `no-key`, `no-models` or `key-invalid`. */
+  ai_key_prompted: { status: string }
   ai_key_added: { provider: string; models_available: number }
   ai_key_add_failed: { provider: string; code: string | null }
   ai_key_checked: { key_id: string; ok: boolean; code: string | null }

@@ -10,12 +10,14 @@ type ComposerProps = {
   placeholder?: string
   /** While something runs: the button stops it instead of sending. */
   onStop?: () => void
+  /** What's in the box when it appears. */
+  initialText?: string
   className?: string
 }
 
 /** Message box: Enter sends, Shift+Enter adds a line. */
-export function Composer({ onSend, disabled, placeholder = 'Message makable…', onStop, className }: ComposerProps) {
-  const [text, setText] = useState('')
+export function Composer({ onSend, disabled, placeholder = 'Message makable…', onStop, initialText = '', className }: ComposerProps) {
+  const [text, setText] = useState(initialText)
 
   function submit(e?: FormEvent) {
     e?.preventDefault()
