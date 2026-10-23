@@ -1,5 +1,6 @@
 import { KeyRound } from 'lucide-react'
 import { Link } from 'react-router'
+import { analytics } from '@/shared/lib/analytics'
 import { cn } from '@/shared/lib/cn'
 import { Button } from '@/shared/ui/button'
 import type { ModelStatus } from '../lib/model-options'
@@ -20,16 +21,23 @@ export function AddKeyPrompt({ status, className }: { status: MissingModel; clas
   return (
     <div role="status" className={cn('flex flex-wrap items-center gap-x-3 gap-y-2', className)}>
       <p className="min-w-0 flex-1 basis-56 text-sm text-muted-foreground">{PROMPTS[status].text}</p>
-      <AddKeyButton status={status} size="sm" />
+      <AddKeyButton status={status} source="ai_box" size="sm" />
     </div>
   )
 }
 
+type AddKeyButtonProps = {
+  status: MissingModel
+  /** Where it's offered: the chat's request for a key, or the AI box. */
+  source: 'chat' | 'ai_box'
+  size?: 'default' | 'sm'
+}
+
 /** The way to Settings for what's missing: "Add an API key", "Choose models" or "Fix your API key". */
-export function AddKeyButton({ status, size = 'default' }: { status: MissingModel; size?: 'default' | 'sm' }) {
+export function AddKeyButton({ status, source, size = 'default' }: AddKeyButtonProps) {
   return (
     <Button asChild size={size}>
-      <Link to="/settings">
+      <Link to="/settings" onClick={() => analytics.track('ai_key_setup_clicked', { status, source })}>
         <KeyRound />
         {PROMPTS[status].action}
       </Link>

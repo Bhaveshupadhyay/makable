@@ -84,7 +84,7 @@ test('a message sent with no AI model gets a reply that leads to Settings, for w
   const noKey = modelNeededReply('no-key', { replies: ['Try again'] })
 
   expect(noKey).toMatchObject({ role: 'assistant', widget: 'add-api-key', replies: ['Try again'] })
-  expect(noKey.text).toStartWith('Your API key isn’t connected yet')
-  expect(modelNeededReply('no-models').text).toContain('no model is chosen')
-  expect(modelNeededReply('key-invalid').text).toContain('stopped working')
+  expect(noKey.text).toStartWith('Almost there! Add your API key')
+  expect(modelNeededReply('no-models').text).toContain('pick a model')
+  expect(modelNeededReply('key-invalid').text).toContain('isn’t working')
 })

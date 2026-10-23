@@ -83,15 +83,11 @@ export function buildChat(thread: AiThread | null, local: LocalChat, undone: rea
   return [...fromThread, ...local.messages].sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
 }
 
+// Short and friendly: what an API key is lives in the "What’s an API key?" help under the reply.
 const MODEL_NEEDED: Record<Exclude<ModelStatus, 'ready'>, string> = {
-  'no-key':
-    'Your API key isn’t connected yet, so I can’t work on this. makable runs on your own API key: it’s like a password ' +
-    'from an AI provider (OpenAI, Google Gemini, Groq and more) that lets makable use their AI on your account.\n\n' +
-    'Connect one in Settings, then send your message again.',
-  'no-models': 'Your API key is connected, but no model is chosen for makable yet. Choose one in Settings, then send your message again.',
-  'key-invalid':
-    'Your API key stopped working, so I can’t work on this. Connect a new one, or check it again, in Settings, then send ' +
-    'your message again.',
+  'no-key': 'Almost there! Add your API key so I can get started, then send your message again.',
+  'no-models': 'Your API key is all set. Just pick a model to use in Settings, then send your message again.',
+  'key-invalid': 'Your API key isn’t working right now. Check it, or add a new one, in Settings, then send your message again.',
 }
 
 /** makable's reply to a message sent with no AI model to answer it: what's missing, and the way to Settings. */

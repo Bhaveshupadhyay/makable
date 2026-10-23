@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef } from 'react'
-import { AddKeyButton, useModelStatus } from '@/features/ai-models'
+import { AddKeyButton, ApiKeyExplainer, useModelStatus } from '@/features/ai-models'
 import { cn } from '@/shared/lib/cn'
 import { Button } from '@/shared/ui/button'
 import type { ChatMessage as ChatMessageType } from '../lib/chat'
@@ -88,8 +88,17 @@ export function ChatPanel({
   )
 }
 
-/** The way to Settings while there's no AI model to use; gone once there is (the message is sent again from the composer). */
+/**
+ * The way to Settings while there's no AI model to use, and what an API key is for those who don't know; gone once
+ * there's a model (the message is sent again from the composer).
+ */
 function AddKeyAction() {
   const status = useModelStatus()
-  return status === 'ready' ? null : <AddKeyButton status={status} />
+  if (status === 'ready') return null
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <AddKeyButton status={status} source="chat" />
+      <ApiKeyExplainer source="chat" />
+    </div>
+  )
 }

@@ -8,6 +8,8 @@ const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5199'
 const OUT_DIR = process.env.OUT_DIR ?? '.'
 
 const GOOD_KEY = 'sk-proj-good-key-7f3a'
+// The chat's reply to a message sent with no AI model.
+const NEEDS_KEY = 'Almost there! Add your API key'
 const KEY_ID = '6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b'
 const AVAILABLE = ['gpt-4.1-mini', 'gpt-5', 'o4-mini']
 const PROVIDERS = [
@@ -115,12 +117,19 @@ try {
   const composer = page.getByRole('textbox', { name: 'Message' })
   await composer.fill('Make the headline bigger')
   await composer.press('Enter')
-  await page.getByText('Your API key isn’t connected yet').waitFor()
+  await page.getByText(NEEDS_KEY).waitFor()
   await page.getByText('Make the headline bigger', { exact: true }).waitFor()
   const chatAddKey = page.getByRole('link', { name: 'Add an API key' })
   expect((await chatAddKey.count()) === 1, 'the chat’s reply offers the way to Settings')
   expect(backend.edits.length === 0, 'nothing is sent without a model')
   await shot('chat-needs-key.png')
+  // What an API key is, for people who don't know, is one click away rather than in the reply.
+  await page.getByRole('button', { name: 'What’s an API key?' }).click()
+  const keyHelp = page.getByRole('dialog').filter({ hasText: 'A private code from an AI company' })
+  await keyHelp.waitFor()
+  await shot('chat-api-key-help.png')
+  await page.keyboard.press('Escape')
+  await keyHelp.waitFor({ state: 'detached' })
   await chatAddKey.click()
   await page.getByRole('heading', { name: 'AI models' }).waitFor()
   await page.getByRole('link', { name: 'Back to the builder' }).click()
@@ -134,7 +143,7 @@ try {
   const prompt = page.getByPlaceholder('Describe the site you want to build…')
   await prompt.fill('A site for my bakery')
   await prompt.press('Enter')
-  await page.getByText('Your API key isn’t connected yet').waitFor()
+  await page.getByText(NEEDS_KEY).waitFor()
   await page.getByText('A site for my bakery', { exact: true }).waitFor()
   expect((await chatAddKey.count()) === 1, 'the landing prompt’s reply offers the way to Settings')
   expect((await page.getByRole('button', { name: 'Try again' }).count()) === 0, 'Try again waits for a model')
@@ -240,6 +249,14 @@ try {
   console.log('✓ AI box: picks are remembered; a refused key links to Settings and falls back to makable default')
 
   expect(errors.length === 0, `page errors:\n${errors.join('\n')}`)
+  // Each step of asking for a key is tracked (when the dev server logs analytics: VITE_ANALYTICS_DEBUG=true).
+  await Promise.all(consoleReads)
+  if (analyticsNames.size) {
+    for (const name of ['ai_message_needs_key', 'ai_key_help_opened', 'ai_key_setup_clicked', 'ai_key_added', 'ai_key_models_saved']) {
+      expect(analyticsNames.has(name), `analytics: no ${name} (seen: ${[...analyticsNames].join(', ')})`)
+    }
+    console.log('✓ analytics: the key request, its help, the way to Settings and the key being added are tracked')
+  }
   console.log('All AI model checks passed')
 } catch (err) {
   await shot('ai-models-failure.png').catch(() => {})
