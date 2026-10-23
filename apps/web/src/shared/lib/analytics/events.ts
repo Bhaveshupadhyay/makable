@@ -88,7 +88,7 @@ export type AnalyticsEvents = {
   ai_key_add_failed: { provider: string; code: string | null }
   ai_key_checked: { key_id: string; ok: boolean; code: string | null }
   /** A chat message wasn't sent for want of an AI model; the chat asked for a key (`no-key`, `no-models` or `key-invalid`). */
-  ai_message_needs_key: { status: string; where: 'workspace' | 'create' }
+  ai_message_needs_key: { status: string; where: 'landing' | 'workspace' | 'create' }
   ai_key_models_saved: { key_id: string; models: string[] }
   ai_key_removed: { key_id: string }
   ai_model_picked: { model: string; provider: string | null; is_default: boolean }

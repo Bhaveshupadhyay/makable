@@ -18,7 +18,7 @@ const PROVIDERS = [
 // --- The fake backend ---
 // `makableModel: false` is a backend without AI_BASE_URL: users need their own key.
 const site = fakeSites()
-const backend = { makableModel: false, key: null, keyBodies: [], edits: [], editAnswers: [] }
+const backend = { makableModel: false, key: null, keyBodies: [], edits: [], editAnswers: [], creates: [] }
 let runs = 0
 /** An AI edit the backend escalates (the chat shows its turn). */
 const escalated = () => {
@@ -44,6 +44,10 @@ function answer(method, path, body) {
   if (method === 'PATCH' && path === `/ai/keys/${KEY_ID}`) {
     backend.key = { ...backend.key, models: body.models }
     return ok(backend.key)
+  }
+  if (method === 'POST' && path === '/ai/create') {
+    backend.creates.push(body)
+    return fail(422, 'ai_model_required', 'Add your own API key in Settings to use AI edits.')
   }
   if (method === 'POST' && path === '/ai/edit') {
     backend.edits.push(body)
@@ -122,6 +126,24 @@ try {
   await page.getByRole('link', { name: 'Back to the builder' }).click()
   await heading.waitFor({ timeout: 90_000 })
   console.log('✓ no model: a chat message asks for an API key instead of going out, and its button opens Settings')
+
+  // A new site's first prompt, on the landing page, isn't sent either: the chat asks for a key, and Try again waits for one.
+  const siteMenu = page.getByRole('button', { name: 'Crumb Bakery' })
+  await siteMenu.click()
+  await page.getByRole('menuitem', { name: 'New site' }).click()
+  const prompt = page.getByPlaceholder('Describe the site you want to build…')
+  await prompt.fill('A site for my bakery')
+  await prompt.press('Enter')
+  await page.getByText('Your API key isn’t connected yet').waitFor()
+  await page.getByText('A site for my bakery', { exact: true }).waitFor()
+  expect((await chatAddKey.count()) === 1, 'the landing prompt’s reply offers the way to Settings')
+  expect((await page.getByRole('button', { name: 'Try again' }).count()) === 0, 'Try again waits for a model')
+  expect(backend.creates.length === 0, 'a site isn’t built without a model')
+  await shot('create-needs-key.png')
+  await page.getByRole('button', { name: 'New site' }).click()
+  await page.getByRole('menuitem', { name: 'Crumb Bakery' }).click()
+  await heading.waitFor({ timeout: 90_000 })
+  console.log('✓ no model: a new site’s prompt asks for an API key instead of going out')
 
   // AI mode asks for a key up front and leads to Settings too.
   await page.getByRole('button', { name: 'Edit with AI' }).last().click()

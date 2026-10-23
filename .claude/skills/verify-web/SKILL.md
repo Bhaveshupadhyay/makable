@@ -49,9 +49,10 @@ a failed deploy), and a site changed elsewhere (a conflict, not an overwrite). S
 
 **`ai-models-smoke.mjs`** (Settings and the AI box's model menu, on an existing site): no makable model and no key (a
 chat message isn't sent: the chat says the key isn't connected, its button opens Settings and goes once there's a model;
+nor is a new site's prompt from the landing page;
 AI mode asks for a key and links to Settings), a refused key, then a good one, two models chosen, the key never on the page
 or in localStorage, a model picked in the AI box and sent, picks remembered over a reload, and a refused key falling back
-to makable default. Screenshots: `chat-needs-key.png`, `ai-needs-key.png`, `ai-settings-choose.png`, `ai-settings.png`, `ai-model-menu.png`.
+to makable default. Screenshots: `chat-needs-key.png`, `create-needs-key.png`, `ai-needs-key.png`, `ai-settings-choose.png`, `ai-settings.png`, `ai-model-menu.png`.
 
 **`theme-smoke.mjs`** (light and dark mode, on a dark system): with no choice the system's theme (System checked), Light
 picked, saved and kept over a reload, the saved theme set by `index.html` before the app runs (the app's script

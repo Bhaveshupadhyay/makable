@@ -78,9 +78,11 @@ export function useCreateSite() {
       }
       const code = e instanceof ApiError ? (e.code ?? null) : null
       analytics.track('site_create_failed', { code, message: errorMessage(e) })
-      if (code && MODEL_ERRORS.has(code)) void modelRejected(choice, code)
+      const modelError = !!code && MODEL_ERRORS.has(code)
+      if (modelError) void modelRejected(choice, code)
       say(projectId, user(prompt))
-      say(projectId, assistant(errorMessage(e), { tone: 'error', replies: [TRY_AGAIN], steps: done }))
+      // A model error is fixed in Settings: the way there shows while there's no model to use (the lists are refetched).
+      say(projectId, assistant(errorMessage(e), { tone: 'error', replies: [TRY_AGAIN], steps: done, ...(modelError ? { widget: 'add-api-key' as const } : {}) }))
     } finally {
       if (inFlight.current === controller) inFlight.current = null
       // The thread has the next question, or the finished creation.
