@@ -52,7 +52,8 @@ export function CreateView({ creation }: { creation: CreateSite }) {
     <ChatPanel
       header={<SiteMenu disabled={!!creating} />}
       messages={messages}
-      repliesEnabled={!creating && !question}
+      // Try again waits for a model: without one it would only ask for a key again.
+      repliesEnabled={!creating && !question && model === 'ready'}
       onSend={(text) => send(text)}
       footer={
         !creating && run && question ? (

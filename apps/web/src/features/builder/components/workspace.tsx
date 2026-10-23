@@ -115,15 +115,23 @@ function WorkspaceChat({ projectId, ai, ctx, publish, sync, busy }: WorkspaceCha
     update(projectId, dropStalePublish)
     if (PUBLISH_REQUEST.test(text.trim())) return update(projectId, (state) => startPublish(state, ctx, text.trim()))
     if (busy) return
-    // With no AI model to answer it, nothing goes out: the chat asks for an API key, with the way to Settings.
-    if (model !== 'ready') {
-      analytics.track('ai_message_needs_key', { status: model, where: 'workspace' })
-      const { say } = useBuilderStore.getState()
-      say(projectId, user(text.trim()))
-      return say(projectId, modelNeededReply(model))
-    }
-    if (question?.question) return void ai.answer(text)
-    void ai.send(text, null)
+    if (question?.question) return answer(text)
+    if (!needsKey(text)) void ai.send(text, null)
+  }
+
+  /** Answers the AI's question (`chat`: a message about it instead). */
+  function answer(text: string, options?: { chat: boolean }) {
+    if (!needsKey(text)) void ai.answer(text, options)
+  }
+
+  /** With no AI model to answer it, nothing goes out: the chat keeps the message and asks for an API key. */
+  function needsKey(text: string): boolean {
+    if (model === 'ready') return false
+    analytics.track('ai_message_needs_key', { status: model, where: 'workspace' })
+    const { say } = useBuilderStore.getState()
+    say(projectId, user(text.trim()))
+    say(projectId, modelNeededReply(model))
+    return true
   }
 
   async function undo(commitSha: string) {
@@ -183,9 +191,9 @@ function WorkspaceChat({ projectId, ai, ctx, publish, sync, busy }: WorkspaceCha
         !ai.pending && question?.question && !awaitingToken(flow) ? (
           <AnswerOptions
             options={question.question.options}
-            onPick={(answer) => void ai.answer(answer)}
+            onPick={(picked) => answer(picked)}
             typeLabel={question.question.allowFreeText ? 'Type something else' : undefined}
-            onChat={(message) => void ai.answer(message, { chat: true })}
+            onChat={(message) => answer(message, { chat: true })}
             onSkip={() => void ai.skip()}
             disabled={busy}
           />
