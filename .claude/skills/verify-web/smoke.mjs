@@ -13,7 +13,7 @@ const KIND_QUESTION = { question: 'What kind of site is it?', options: ['A landi
 const NAME_REPLY = "It becomes your site's title and its repository's name on your GitHub, so anything works. What should we call it?"
 const COLOUR_QUESTION = { question: 'Which colour should the buttons be?', options: ['#e11d48', '#2563eb'], allowFreeText: true }
 const WEEKEND = '<p className="mt-2 text-amber-800">Open weekends 8–2</p>'
-const DEMO_VIDEO = 'https://pub-4a29d5bc45754e1e9ab37c133e4e92b9.r2.dev/mak.mp4'
+const DEMO_VIDEO = 'https://media.clientmanger.tech/mak.mp4'
 // Its backup on Google Drive, in Drive's player, for when R2 can't serve it.
 const DEMO_BACKUP = 'https://drive.google.com/file/d/1Y6S0sqxlCCJJvUxavzmWfTVEvyznqkTL/preview'
 // What an AI request took, as the server sends it for the user's own key.

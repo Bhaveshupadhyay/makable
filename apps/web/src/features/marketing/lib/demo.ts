@@ -1,7 +1,10 @@
 import type { AnalyticsEvents } from '@/shared/lib/analytics'
 
-/** The product demo, for visitors who want to see makable without signing in with GitHub first. */
-export const DEMO_VIDEO_URL = 'https://pub-4a29d5bc45754e1e9ab37c133e4e92b9.r2.dev/mak.mp4'
+/**
+ * The product demo, for visitors who want to see makable without signing in with GitHub first. On R2 through a custom
+ * domain, which Cloudflare caches: the bucket's `r2.dev` URL is rate-limited (~114 KB/s at times, too slow to play).
+ */
+export const DEMO_VIDEO_URL = 'https://media.clientmanger.tech/mak.mp4'
 /**
  * Its backup on Google Drive, in Drive's own player, for when R2's copy can't load or play. Drive refuses to serve the
  * file to a `<video>` on another site (a 403 for cross-site requests), so it can only be embedded this way.
