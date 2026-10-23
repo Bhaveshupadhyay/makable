@@ -1,3 +1,4 @@
+import { MAX_PROMPT } from '@makable/shared'
 import { ArrowUpRight, LoaderCircle } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { useThread } from '@/features/ai-edit'
@@ -98,10 +99,12 @@ function Studio({ login }: { login: string }) {
     else askForKey(prompt, model)
   }, [creation, model])
 
+  // Its result goes back to the prompt box: false (refused, e.g. too long) keeps the text there.
   function start(prompt: string) {
-    // While the lists load, it goes out: a model error then asks for a key all the same.
-    if (model === 'ready' || model === 'checking') creation.start(prompt)
-    else askForKey(prompt, model)
+    // A prompt that can't go anyway (too long) is refused with why, before any key is asked for; while the lists load,
+    // it goes out, and a model error then asks for a key all the same.
+    if (model === 'ready' || model === 'checking' || prompt.trim().length > MAX_PROMPT) return creation.start(prompt)
+    askForKey(prompt, model)
   }
 
   if (site?.repoName) return <Workspace login={login} />
