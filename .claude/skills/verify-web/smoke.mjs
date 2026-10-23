@@ -279,12 +279,24 @@ try {
   expect((await backup.getAttribute('src')) === DEMO_BACKUP, 'with R2 down, the demo must show the Google Drive backup')
   expect((await video.count()) === 0 && !(await soundButton.isVisible()), 'the backup takes the video’s place')
   await expectEvent('demo_video_failed', { placement: 'dialog' })
-  await page.frameLocator('[role="dialog"] iframe').locator('body').waitFor({ state: 'attached' })
+  // Drive's player itself, not an error page: its play button, and the demo's file in its title.
+  const drive = page.frameLocator('[role="dialog"] iframe')
+  await drive.getByRole('button', { name: /^Play/ }).first().waitFor()
+  expect((await drive.locator('title').textContent())?.includes('makable.mp4'), 'the backup must show the demo’s file in Drive’s player')
   await shot('demo-video-backup.png')
   await page.unroute(DEMO_VIDEO)
   await demo.getByRole('button', { name: 'Close' }).click()
+  // R2 hanging (no answer and no error): after 15 s without anything to play, the backup takes over too.
+  await page.route(DEMO_VIDEO, () => {})
+  await page.goto(`${BASE_URL}/?utm_source=res`)
+  await demo.waitFor()
+  expect((await video.count()) === 1, 'the demo waits for R2 first')
+  await backup.waitFor({ timeout: 25_000 })
+  await expectEvent('demo_video_failed', { placement: 'dialog', message: 'stalled' })
+  await page.unroute(DEMO_VIDEO)
+  await demo.getByRole('button', { name: 'Close' }).click()
   console.log(
-    `✓ the resume links (res, resume) play the demo (muted until asked), it closes (by itself once it ends), other links leave it shut, with R2 down the Google Drive backup shows; the landing page plays it on a click${events.length ? ', and every step is tracked' : ' (events not checked: VITE_ANALYTICS_DEBUG is off)'}`,
+    `✓ the resume links (res, resume) play the demo (muted until asked), it closes (by itself once it ends), other links leave it shut, with R2 down or hanging the Google Drive backup shows; the landing page plays it on a click${events.length ? ', and every step is tracked' : ' (events not checked: VITE_ANALYTICS_DEBUG is off)'}`,
   )
   site.signedIn = true
 

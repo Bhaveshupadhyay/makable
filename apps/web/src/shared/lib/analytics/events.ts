@@ -40,7 +40,7 @@ export type AnalyticsEvents = {
   demo_video_closed: { reason: 'dismissed' | 'ended'; watched_seconds: number; ended: boolean }
   /**
    * R2's copy couldn't load or play, so the backup on Google Drive shows instead: `code` is the `MediaError` code (2
-   * network, 3 decode, 4 not supported).
+   * network, 3 decode, 4 not supported), or null with `message: 'stalled'` when it had nothing to play 15 s after a play.
    */
   demo_video_failed: { placement: 'dialog' | 'landing'; code: number | null; message: string }
 

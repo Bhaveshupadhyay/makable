@@ -4,6 +4,13 @@ import { analytics } from '@/shared/lib/analytics'
 import { Button } from '@/shared/ui/button'
 import { DEMO_BACKUP_EMBED_URL, DEMO_POSTER_URL, DEMO_VIDEO_URL, type DemoPlacement, playedSeconds, progressReached } from '../lib/demo'
 
+/**
+ * Asked to play (or to go on), a video with still nothing to play after this long (R2 hanging rather than failing) gives
+ * way to the backup. Buffering while it plays isn't counted: on a slow connection, starting over in Drive's player
+ * would be worse, and R2 actually failing comes as an `error`.
+ */
+const STALL_MS = 15_000
+
 type DemoPlayerProps = {
   placement: DemoPlacement
   /** Plays as soon as it shows (the dialog). Otherwise it waits for a click and loads nothing before (it's ~33 MB). */
@@ -15,9 +22,9 @@ type DemoPlayerProps = {
 
 /**
  * The product demo's video: with sound where the browser allows it, else muted with a button to turn it on. When R2's
- * copy can't load or play, the backup on Google Drive shows in its place, in Drive's player: it doesn't play by itself,
- * and its plays, progress and end aren't seen here. Reports its first play and each quarter seen, so the dialog and the
- * landing page are measured the same way.
+ * copy can't load or play, or gets stuck waiting for it, the backup on Google Drive shows in its place, in Drive's
+ * player: it doesn't play by itself, and its plays, progress and end aren't seen here. Reports its first play and each
+ * quarter seen, so the dialog and the landing page are measured the same way.
  */
 export function DemoPlayer({ placement, autoPlay = false, onWatched, onEnded }: DemoPlayerProps) {
   const ref = useRef<HTMLVideoElement>(null)
@@ -27,12 +34,16 @@ export function DemoPlayer({ placement, autoPlay = false, onWatched, onEnded }: 
   // Until it first plays, a player that waits for a click covers its poster with a big play button: browsers' own
   // controls only put a small one in a corner, which makes the poster look like a still picture.
   const [started, setStarted] = useState(autoPlay)
-  // Sent once per player, also across Try again (which starts the video's played ranges over).
+  // Sent once per player.
   const tracked = useRef({ played: false, progress: new Set<number>() })
+  // Runs from a play until it plays.
+  const stall = useRef<number | undefined>(undefined)
 
   useEffect(() => {
     if (autoPlay && ref.current) autoplay(ref.current)
   }, [autoPlay])
+
+  useEffect(() => () => window.clearTimeout(stall.current), [])
 
   function turnOnSound() {
     const video = ref.current
@@ -49,7 +60,22 @@ export function DemoPlayer({ placement, autoPlay = false, onWatched, onEnded }: 
     autoplay(video)
   }
 
+  function toBackup(code: number | null, message: string) {
+    window.clearTimeout(stall.current)
+    analytics.track('demo_video_failed', { placement, code, message })
+    setBackup(true)
+  }
+
+  /** Starts waiting for it to play: `playing` or a pause ends it, else the backup takes over. */
+  function watchStall(video: HTMLVideoElement) {
+    window.clearTimeout(stall.current)
+    stall.current = window.setTimeout(() => {
+      if (!video.paused && video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) toBackup(null, 'stalled')
+    }, STALL_MS)
+  }
+
   function onPlaying(video: HTMLVideoElement) {
+    window.clearTimeout(stall.current)
     if (tracked.current.played) return
     tracked.current.played = true
     analytics.track('demo_video_played', { placement, muted: video.muted })
@@ -84,18 +110,21 @@ export function DemoPlayer({ placement, autoPlay = false, onWatched, onEnded }: 
         preload={autoPlay ? 'auto' : 'none'}
         className="aspect-video w-full"
         onVolumeChange={(e) => setMuted(e.currentTarget.muted)}
-        onPlay={() => {
+        onPlay={(e) => {
           setPaused(false)
           setStarted(true)
+          watchStall(e.currentTarget)
         }}
-        onPause={() => setPaused(true)}
+        onPause={() => {
+          setPaused(true)
+          window.clearTimeout(stall.current)
+        }}
         onPlaying={(e) => onPlaying(e.currentTarget)}
         onTimeUpdate={(e) => onTimeUpdate(e.currentTarget)}
         onEnded={onEnded}
         onError={(e) => {
           const error = e.currentTarget.error
-          analytics.track('demo_video_failed', { placement, code: error?.code ?? null, message: error?.message ?? '' })
-          setBackup(true)
+          toBackup(error?.code ?? null, error?.message ?? '')
         }}
       />
       {!started && (
