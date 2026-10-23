@@ -2,12 +2,14 @@ import { LoaderCircle } from 'lucide-react'
 import { type ReactNode, useMemo, useRef } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { type AiNote, AnswerOptions, type AiRun, EDITS_PAUSED, phaseText, ThinkingLine, useAiRun } from '@/features/ai-edit'
+import { useModelStatus } from '@/features/ai-models'
 import { SaveStatus, type SiteSync, useSiteStore, useSiteSync, workingFiles } from '@/features/site'
 import { useMediaQuery } from '@/shared/hooks/use-media-query'
+import { analytics } from '@/shared/lib/analytics'
 import { Button } from '@/shared/ui/button'
 import { HeaderActions } from '@/shared/ui/header-slot'
 import { usePublish } from '../hooks/use-publish'
-import { assistant, buildChat, emptyChat, pausedRunChat, user } from '../lib/chat'
+import { assistant, buildChat, emptyChat, modelNeededReply, pausedRunChat, user } from '../lib/chat'
 import { awaitingToken, dropStalePublish, PUBLISH_REQUEST, type PublishContext, publishText, startPublish, TARGETS } from '../lib/publish-flow'
 import { useBuilderStore, useSiteChat } from '../store'
 import { ChatMessage } from './chat-message'
@@ -98,6 +100,7 @@ function WorkspaceChat({ projectId, ai, ctx, publish, sync, busy }: WorkspaceCha
   const chat = useSiteChat(projectId)
   const update = useBuilderStore((s) => s.update)
   const markUndone = useBuilderStore((s) => s.markUndone)
+  const model = useModelStatus()
   const messages = useMemo(() => buildChat(ai.thread, chat, chat.undone), [ai.thread, chat])
   const flow = chat.publish
   const question = ai.question
@@ -112,8 +115,23 @@ function WorkspaceChat({ projectId, ai, ctx, publish, sync, busy }: WorkspaceCha
     update(projectId, dropStalePublish)
     if (PUBLISH_REQUEST.test(text.trim())) return update(projectId, (state) => startPublish(state, ctx, text.trim()))
     if (busy) return
-    if (question?.question) return void ai.answer(text)
-    void ai.send(text, null)
+    if (question?.question) return answer(text)
+    if (!needsKey(text)) void ai.send(text, null)
+  }
+
+  /** Answers the AI's question (`chat`: a message about it instead). */
+  function answer(text: string, options?: { chat: boolean }) {
+    if (!needsKey(text)) void ai.answer(text, options)
+  }
+
+  /** With no AI model to answer it, nothing goes out: the chat keeps the message and asks for an API key. */
+  function needsKey(text: string): boolean {
+    if (model === 'ready') return false
+    analytics.track('ai_message_needs_key', { status: model, where: 'workspace' })
+    const { say } = useBuilderStore.getState()
+    say(projectId, user(text.trim()))
+    say(projectId, modelNeededReply(model))
+    return true
   }
 
   async function undo(commitSha: string) {
@@ -173,9 +191,9 @@ function WorkspaceChat({ projectId, ai, ctx, publish, sync, busy }: WorkspaceCha
         !ai.pending && question?.question && !awaitingToken(flow) ? (
           <AnswerOptions
             options={question.question.options}
-            onPick={(answer) => void ai.answer(answer)}
+            onPick={(picked) => answer(picked)}
             typeLabel={question.question.allowFreeText ? 'Type something else' : undefined}
-            onChat={(message) => void ai.answer(message, { chat: true })}
+            onChat={(message) => answer(message, { chat: true })}
             onSkip={() => void ai.skip()}
             disabled={busy}
           />

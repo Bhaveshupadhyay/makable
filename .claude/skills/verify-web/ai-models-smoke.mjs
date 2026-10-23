@@ -104,10 +104,26 @@ const heading = frame.getByRole('heading', { name: 'Crumb Bakery' })
 const element = frame.getByText('Fresh bread every morning')
 
 try {
-  // 1. No makable model and no key yet: AI mode asks for a key up front and leads to Settings.
-  // The user's site opens by itself (their newest).
+  // 1. No makable model and no key yet: a message in the chat isn't sent; the chat says the key isn't connected, and
+  // its button leads to Settings. The user's site opens by itself (their newest).
   await page.goto(BASE_URL)
   await heading.waitFor({ timeout: 90_000 })
+  const composer = page.getByRole('textbox', { name: 'Message' })
+  await composer.fill('Make the headline bigger')
+  await composer.press('Enter')
+  await page.getByText('Your API key isn’t connected yet').waitFor()
+  await page.getByText('Make the headline bigger', { exact: true }).waitFor()
+  const chatAddKey = page.getByRole('link', { name: 'Add an API key' })
+  expect((await chatAddKey.count()) === 1, 'the chat’s reply offers the way to Settings')
+  expect(backend.edits.length === 0, 'nothing is sent without a model')
+  await shot('chat-needs-key.png')
+  await chatAddKey.click()
+  await page.getByRole('heading', { name: 'AI models' }).waitFor()
+  await page.getByRole('link', { name: 'Back to the builder' }).click()
+  await heading.waitFor({ timeout: 90_000 })
+  console.log('✓ no model: a chat message asks for an API key instead of going out, and its button opens Settings')
+
+  // AI mode asks for a key up front and leads to Settings too.
   await page.getByRole('button', { name: 'Edit with AI' }).last().click()
   await page.getByText('AI edits run on your own API key').waitFor()
   await clickInPreview(page, element)
@@ -153,6 +169,8 @@ try {
   await heading.waitFor({ timeout: 90_000 })
   // AI mode is still on from before Settings, now with a model to use.
   await page.getByText('Click anything in the preview to change it with AI').waitFor()
+  // With a model, the chat's earlier reply no longer offers Settings.
+  expect((await chatAddKey.count()) === 0, 'the chat’s Add an API key button goes once there’s a model')
   await clickInPreview(page, element)
   const aiBox = page.getByRole('textbox', { name: 'Ask AI to make changes' })
   await aiBox.waitFor()
