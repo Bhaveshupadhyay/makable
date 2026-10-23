@@ -13,18 +13,26 @@ const PROMPTS: Record<Exclude<ModelStatus, 'ready'>, { text: string; action: str
   'key-invalid': { text: 'Your API key stopped working. Add a new one, or check it again, in Settings.', action: 'Fix your API key' },
 }
 
+type MissingModel = Exclude<ModelStatus, 'ready'>
+
 /** Asks for what AI edits are missing (a key, a model, a working key) and links to Settings. */
-export function AddKeyPrompt({ status, className }: { status: Exclude<ModelStatus, 'ready'>; className?: string }) {
-  const prompt = PROMPTS[status]
+export function AddKeyPrompt({ status, className }: { status: MissingModel; className?: string }) {
   return (
     <div role="status" className={cn('flex flex-wrap items-center gap-x-3 gap-y-2', className)}>
-      <p className="min-w-0 flex-1 basis-56 text-sm text-muted-foreground">{prompt.text}</p>
-      <Button asChild size="sm">
-        <Link to="/settings">
-          <KeyRound />
-          {prompt.action}
-        </Link>
-      </Button>
+      <p className="min-w-0 flex-1 basis-56 text-sm text-muted-foreground">{PROMPTS[status].text}</p>
+      <AddKeyButton status={status} size="sm" />
     </div>
+  )
+}
+
+/** The way to Settings for what's missing: "Add an API key", "Choose models" or "Fix your API key". */
+export function AddKeyButton({ status, size = 'default' }: { status: MissingModel; size?: 'default' | 'sm' }) {
+  return (
+    <Button asChild size={size}>
+      <Link to="/settings">
+        <KeyRound />
+        {PROMPTS[status].action}
+      </Link>
+    </Button>
   )
 }

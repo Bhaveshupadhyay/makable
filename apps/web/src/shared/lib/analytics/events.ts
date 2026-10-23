@@ -38,7 +38,10 @@ export type AnalyticsEvents = {
    * `watched_seconds`: how much of it played, without the parts skipped over.
    */
   demo_video_closed: { reason: 'dismissed' | 'ended'; watched_seconds: number; ended: boolean }
-  /** The video couldn't load or play: `code` is the `MediaError` code (2 network, 3 decode, 4 not supported). */
+  /**
+   * R2's copy couldn't load or play, so the backup on Google Drive shows instead: `code` is the `MediaError` code (2
+   * network, 3 decode, 4 not supported), or null with `message: 'stalled'` when it had nothing to play 15 s after a play.
+   */
   demo_video_failed: { placement: 'dialog' | 'landing'; code: number | null; message: string }
 
   // Sites built from a prompt
@@ -84,6 +87,8 @@ export type AnalyticsEvents = {
   ai_key_added: { provider: string; models_available: number }
   ai_key_add_failed: { provider: string; code: string | null }
   ai_key_checked: { key_id: string; ok: boolean; code: string | null }
+  /** A chat message wasn't sent for want of an AI model; the chat asked for a key (`no-key`, `no-models` or `key-invalid`). */
+  ai_message_needs_key: { status: string; where: 'workspace' | 'create' }
   ai_key_models_saved: { key_id: string; models: string[] }
   ai_key_removed: { key_id: string }
   ai_model_picked: { model: string; provider: string | null; is_default: boolean }

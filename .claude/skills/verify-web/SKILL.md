@@ -30,14 +30,14 @@ reaches GitHub, a model or a hosting platform. Test those by hand with the backe
 4. **Look at the screenshots** with the Read tool. Check the layout, not just the assertions.
 5. **Stop the dev server:** `pkill -f 'vite --port 5199'`.
 
-**`smoke.mjs`** (the builder): a guest can type in the prompt box, and Enter or Send asks them to sign in (the text kept in the box and for after sign-in); the resume's links (`?utm_source=res` and `resume`) play the product demo over the page (muted until **Turn on sound**, since headless Chromium won't play sound by itself), it closes by itself when the video ends, showing the site, other links don't open it, and a video that can't load says so and plays on **Try again**; the landing page has the demo under how it works (its poster, nothing loaded until **Watch the demo** plays it); each step's analytics event (shown, played, every quarter seen, closed, failed) is checked; signed in with no sites, the landing prompt
+**`smoke.mjs`** (the builder): a guest can type in the prompt box, and Enter or Send asks them to sign in (the text kept in the box and for after sign-in); the resume's links (`?utm_source=res` and `resume`) play the product demo over the page (muted until **Turn on sound**, since headless Chromium won't play sound by itself), it closes by itself when R2's video ends, showing the site, other links don't open it, and with R2 down (an error) or hanging (nothing to play 15 s after a play) the backup on Google Drive shows in its place, in Drive's player (its play button and the file checked; it doesn't close the dialog at the end); the landing page has the demo under how it works (its poster, nothing loaded until **Watch the demo** plays it); each step's analytics event (shown, played, every quarter seen, closed, failed) is checked; signed in with no sites, the landing prompt
 starts a creation (NDJSON stream), which asks for the name ("Chat about this" sends a message about the question, the conversation staying on screen while it's sent, and the AI's reply asks again), then shows its progress and opens the site in the preview
 (elements tagged with `data-src`); Edit text patches the source and Save now commits it on the site's commit; an AI
 edit on a selected element goes out on the saved commit with the element's place in the code (while the AI works, the chat and the AI box say "Thinking…" with the time so far ticking), is tried in the preview,
 reported ok and committed (what it took, sent for the user's own key, under the reply, its details on a click), then undone; an AI question is answered with an option (while a question waits, its answers take the composer's place); an AI change that breaks the preview
 is reported with the error and taken back out; the code view edits (unsaved count) and keeps makable's files read-only;
 GitHub Pages publishing asks before making the repo public, saves first and follows the deploy until live; a phone
-layout; and a new browser opens the newest site by itself. Screenshots: `sign-in.png`, `demo-video.png`, `demo-video-mobile.png`, `landing-demo.png`, `landing-demo-mobile.png`, `demo-video-failed.png`, `landing.png`,
+layout; and a new browser opens the newest site by itself. Screenshots: `sign-in.png`, `demo-video.png`, `demo-video-mobile.png`, `landing-demo.png`, `landing-demo-mobile.png`, `demo-video-backup.png`, `landing.png`,
 `create-brief.png`, `create-name.png`, `create-name-chat-open.png`, `create-name-chat-sending.png`, `create-name-chat.png`, `create-steps.png`, `workspace.png`, `ai-edit-popover.png`, `ai-thinking.png`, `ai-edit.png`, `ai-usage.png`, `ai-question.png`, `code-view.png`,
 `publish-live.png`, `workspace-mobile.png`.
 
@@ -47,10 +47,11 @@ publish's commit and deploys with nothing new, Netlify with the secret added on 
 a failed deploy), and a site changed elsewhere (a conflict, not an overwrite). Screenshots: `publish-token.png`,
 `publish-live.png`, `publish-failed.png`.
 
-**`ai-models-smoke.mjs`** (Settings and the AI box's model menu, on an existing site): no makable model and no key (AI
-mode asks for a key and links to Settings), a refused key, then a good one, two models chosen, the key never on the page
+**`ai-models-smoke.mjs`** (Settings and the AI box's model menu, on an existing site): no makable model and no key (a
+chat message isn't sent: the chat says the key isn't connected, its button opens Settings and goes once there's a model;
+AI mode asks for a key and links to Settings), a refused key, then a good one, two models chosen, the key never on the page
 or in localStorage, a model picked in the AI box and sent, picks remembered over a reload, and a refused key falling back
-to makable default. Screenshots: `ai-needs-key.png`, `ai-settings-choose.png`, `ai-settings.png`, `ai-model-menu.png`.
+to makable default. Screenshots: `chat-needs-key.png`, `ai-needs-key.png`, `ai-settings-choose.png`, `ai-settings.png`, `ai-model-menu.png`.
 
 **`theme-smoke.mjs`** (light and dark mode, on a dark system): with no choice the system's theme (System checked), Light
 picked, saved and kept over a reload, the saved theme set by `index.html` before the app runs (the app's script
@@ -73,4 +74,4 @@ with `clickInPreview` (real mouse coordinates). On macOS, Home/End scroll the pa
 an editable; use `Meta+ArrowLeft/Right`. A step that breaks the preview on purpose sets `errors.expected` (the bundler
 logs the broken code). Monaco reports a `Canceled` rejection when the editor switches files and then handles it; the
 scripts ignore that one. The preview needs network access to the CodeSandbox bundler and the jsDelivr CDN (Tailwind and
-the Monaco editor), and the demo step to the video's R2 bucket.
+the Monaco editor), and the demo step to the video's R2 bucket and Google Drive (its backup).

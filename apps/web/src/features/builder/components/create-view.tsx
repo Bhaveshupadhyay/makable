@@ -1,12 +1,14 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Check } from 'lucide-react'
 import { AnswerOptions, dismissRun, ThinkingLine, threadKey, useThread } from '@/features/ai-edit'
+import { useModelStatus } from '@/features/ai-models'
 import { useSession } from '@/features/auth'
 import { useSiteStore } from '@/features/site'
+import { analytics } from '@/shared/lib/analytics'
 import type { CreateSite, Creating } from '../hooks/use-create-site'
 import { TRY_AGAIN } from '../hooks/use-create-site'
-import { buildChat, type ChatMessage as Message, pausedRunChat } from '../lib/chat'
-import { useSiteChat } from '../store'
+import { buildChat, type ChatMessage as Message, modelNeededReply, pausedRunChat, user } from '../lib/chat'
+import { useBuilderStore, useSiteChat } from '../store'
 import { ChatMessage } from './chat-message'
 import { ChatPanel } from './chat-panel'
 import { SiteMenu } from './site-menu'
@@ -21,19 +23,24 @@ export function CreateView({ creation }: { creation: CreateSite }) {
   const run = thread.data?.run?.mode === 'create' ? thread.data.run : null
   const question = run?.question ?? null
   const { creating } = creation
+  const model = useModelStatus()
   const messages = buildChat(thread.data ?? null, chat)
 
   // `aboutQuestion`: a message about the question ("Chat about this"), not its answer.
   function send(text: string, aboutQuestion = false) {
     if (creating) return
-    if (run && question) return creation.answer(run, text, { chat: aboutQuestion })
     // "Try again" builds the last prompt that didn't make it.
-    if (text === TRY_AGAIN) {
-      const prompt = [...chat.messages].reverse().find((m) => m.role === 'user')?.text
-      if (prompt) creation.start(prompt)
-      return
+    const asked = text === TRY_AGAIN && !question ? [...chat.messages].reverse().find((m) => m.role === 'user')?.text : text
+    if (!asked) return
+    // With no AI model to build it, nothing goes out: the chat asks for an API key, and Try again sends it once there's one.
+    if (model !== 'ready') {
+      analytics.track('ai_message_needs_key', { status: model, where: 'create' })
+      const { say } = useBuilderStore.getState()
+      say(projectId, user(asked.trim()))
+      return say(projectId, modelNeededReply(model, question ? {} : { replies: [TRY_AGAIN] }))
     }
-    creation.start(text)
+    if (run && question) return creation.answer(run, text, { chat: aboutQuestion })
+    creation.start(asked)
   }
 
   async function cancel() {
@@ -45,7 +52,8 @@ export function CreateView({ creation }: { creation: CreateSite }) {
     <ChatPanel
       header={<SiteMenu disabled={!!creating} />}
       messages={messages}
-      repliesEnabled={!creating && !question}
+      // Try again waits for a model: without one it would only ask for a key again.
+      repliesEnabled={!creating && !question && model === 'ready'}
       onSend={(text) => send(text)}
       footer={
         !creating && run && question ? (
