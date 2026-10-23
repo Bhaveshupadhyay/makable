@@ -2,6 +2,11 @@ import type { AnalyticsEvents } from '@/shared/lib/analytics'
 
 /** The product demo, for visitors who want to see makable without signing in with GitHub first. */
 export const DEMO_VIDEO_URL = 'https://pub-4a29d5bc45754e1e9ab37c133e4e92b9.r2.dev/mak.mp4'
+/**
+ * Its backup on Google Drive, in Drive's own player, for when R2's copy can't load or play. Drive refuses to serve the
+ * file to a `<video>` on another site (a 403 for cross-site requests), so it can only be embedded this way.
+ */
+export const DEMO_BACKUP_EMBED_URL = 'https://drive.google.com/file/d/1Y6S0sqxlCCJJvUxavzmWfTVEvyznqkTL/preview'
 /** A frame of the demo (the chat beside the site it built), shown until it plays. */
 export const DEMO_POSTER_URL = '/demo-poster.jpg'
 

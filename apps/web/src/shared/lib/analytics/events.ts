@@ -38,7 +38,10 @@ export type AnalyticsEvents = {
    * `watched_seconds`: how much of it played, without the parts skipped over.
    */
   demo_video_closed: { reason: 'dismissed' | 'ended'; watched_seconds: number; ended: boolean }
-  /** The video couldn't load or play: `code` is the `MediaError` code (2 network, 3 decode, 4 not supported). */
+  /**
+   * R2's copy couldn't load or play, so the backup on Google Drive shows instead: `code` is the `MediaError` code (2
+   * network, 3 decode, 4 not supported), or null with `message: 'stalled'` when it had nothing to play 15 s after a play.
+   */
   demo_video_failed: { placement: 'dialog' | 'landing'; code: number | null; message: string }
 
   // Sites built from a prompt
