@@ -8,17 +8,21 @@ const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5199'
 const OUT_DIR = process.env.OUT_DIR ?? '.'
 
 const GOOD_KEY = 'sk-proj-good-key-7f3a'
+// The chat's reply to a message sent with no AI model.
+const NEEDS_KEY = 'Almost there! Add your API key'
 const KEY_ID = '6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b'
 const AVAILABLE = ['gpt-4.1-mini', 'gpt-5', 'o4-mini']
 const PROVIDERS = [
   { id: 'openai', name: 'OpenAI', keysUrl: 'https://platform.openai.com/api-keys' },
   { id: 'groq', name: 'Groq', keysUrl: 'https://console.groq.com/keys' },
+  { id: 'gemini', name: 'Google Gemini', keysUrl: 'https://aistudio.google.com/apikey' },
 ]
+const GEMINI_KEYS = PROVIDERS[2].keysUrl
 
 // --- The fake backend ---
 // `makableModel: false` is a backend without AI_BASE_URL: users need their own key.
 const site = fakeSites()
-const backend = { makableModel: false, key: null, keyBodies: [], edits: [], editAnswers: [] }
+const backend = { makableModel: false, key: null, keyBodies: [], edits: [], editAnswers: [], creates: [] }
 let runs = 0
 /** An AI edit the backend escalates (the chat shows its turn). */
 const escalated = () => {
@@ -44,6 +48,10 @@ function answer(method, path, body) {
   if (method === 'PATCH' && path === `/ai/keys/${KEY_ID}`) {
     backend.key = { ...backend.key, models: body.models }
     return ok(backend.key)
+  }
+  if (method === 'POST' && path === '/ai/create') {
+    backend.creates.push(body)
+    return fail(422, 'ai_model_required', 'Add your own API key in Settings to use AI edits.')
   }
   if (method === 'POST' && path === '/ai/edit') {
     backend.edits.push(body)
@@ -111,17 +119,54 @@ try {
   const composer = page.getByRole('textbox', { name: 'Message' })
   await composer.fill('Make the headline bigger')
   await composer.press('Enter')
-  await page.getByText('Your API key isn’t connected yet').waitFor()
+  await page.getByText(NEEDS_KEY).waitFor()
   await page.getByText('Make the headline bigger', { exact: true }).waitFor()
   const chatAddKey = page.getByRole('link', { name: 'Add an API key' })
   expect((await chatAddKey.count()) === 1, 'the chat’s reply offers the way to Settings')
   expect(backend.edits.length === 0, 'nothing is sent without a model')
   await shot('chat-needs-key.png')
+  // What an API key is, for people who don't know, is one click away rather than in the reply.
+  await page.getByRole('button', { name: 'What’s an API key?' }).click()
+  const keyHelp = page.getByRole('dialog').filter({ hasText: 'A private code from an AI company' })
+  await keyHelp.waitFor()
+  // The free option, and each company's own page for making a key, so nobody has to search for it.
+  const freeKey = keyHelp.getByRole('link', { name: 'Get a free Gemini key' })
+  expect((await freeKey.getAttribute('href')) === GEMINI_KEYS, 'the free tip links to Gemini’s page for making a key')
+  const providerLinks = keyHelp.getByRole('list', { name: 'Where to get an API key' }).getByRole('link')
+  expect(
+    JSON.stringify(await providerLinks.evaluateAll((links) => links.map((a) => a.getAttribute('href')))) === JSON.stringify(PROVIDERS.map((p) => p.keysUrl)),
+    'each company links to its own page for making a key',
+  )
+  await page.context().route(/^https:\/\/aistudio\.google\.com\//, (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>AI Studio</title>' }))
+  const [studio] = await Promise.all([page.waitForEvent('popup'), freeKey.click()])
+  expect(studio.url() === GEMINI_KEYS, `the free tip opens Gemini’s key page, got ${studio.url()}`)
+  await studio.close()
+  await shot('chat-api-key-help.png')
+  await page.keyboard.press('Escape')
+  await keyHelp.waitFor({ state: 'detached' })
   await chatAddKey.click()
   await page.getByRole('heading', { name: 'AI models' }).waitFor()
   await page.getByRole('link', { name: 'Back to the builder' }).click()
   await heading.waitFor({ timeout: 90_000 })
   console.log('✓ no model: a chat message asks for an API key instead of going out, and its button opens Settings')
+
+  // A new site's first prompt, on the landing page, isn't sent either: the chat asks for a key, and Try again waits for one.
+  const siteMenu = page.getByRole('button', { name: 'Crumb Bakery' })
+  await siteMenu.click()
+  await page.getByRole('menuitem', { name: 'New site' }).click()
+  const prompt = page.getByPlaceholder('Describe the site you want to build…')
+  await prompt.fill('A site for my bakery')
+  await prompt.press('Enter')
+  await page.getByText(NEEDS_KEY).waitFor()
+  await page.getByText('A site for my bakery', { exact: true }).waitFor()
+  expect((await chatAddKey.count()) === 1, 'the landing prompt’s reply offers the way to Settings')
+  expect((await page.getByRole('button', { name: 'Try again' }).count()) === 0, 'Try again waits for a model')
+  expect(backend.creates.length === 0, 'a site isn’t built without a model')
+  await shot('create-needs-key.png')
+  await page.getByRole('button', { name: 'New site' }).click()
+  await page.getByRole('menuitem', { name: 'Crumb Bakery' }).click()
+  await heading.waitFor({ timeout: 90_000 })
+  console.log('✓ no model: a new site’s prompt asks for an API key instead of going out')
 
   // AI mode asks for a key up front and leads to Settings too.
   await page.getByRole('button', { name: 'Edit with AI' }).last().click()
@@ -133,8 +178,16 @@ try {
   await shot('ai-needs-key.png')
   await popover.getByRole('link', { name: 'Add an API key' }).click()
   await page.getByRole('heading', { name: 'AI models' }).waitFor()
-  await page.getByText('No keys yet').waitFor()
-  console.log('✓ no model: AI mode asks for an API key (hint and box) and links to Settings')
+  await page.getByText('No keys yet. Add one above to start building.').waitFor()
+  // With no key yet, Settings suggests the free option too, and the form links to the chosen company's key page.
+  await page.getByText('Want it free?').waitFor()
+  expect((await page.getByRole('option', { name: 'Google Gemini (free tier)' }).count()) === 1, 'Gemini is marked as free in the list')
+  expect((await page.getByRole('link', { name: 'Get your OpenAI API key' }).getAttribute('href')) === PROVIDERS[0].keysUrl, 'the form links to OpenAI’s key page')
+  await page.getByLabel('Provider').selectOption('gemini')
+  expect((await page.getByRole('link', { name: 'Get your Google Gemini API key' }).getAttribute('href')) === GEMINI_KEYS, 'the link follows the chosen company')
+  await shot('ai-settings-no-keys.png')
+  await page.getByLabel('Provider').selectOption('openai')
+  console.log('✓ no model: AI mode asks for an API key (hint and box) and links to Settings, which suggests Gemini’s free tier')
 
   const keyInput = page.getByLabel('API key', { exact: true })
   await keyInput.fill('sk-wrong')
@@ -218,6 +271,14 @@ try {
   console.log('✓ AI box: picks are remembered; a refused key links to Settings and falls back to makable default')
 
   expect(errors.length === 0, `page errors:\n${errors.join('\n')}`)
+  // Each step of asking for a key is tracked (when the dev server logs analytics: VITE_ANALYTICS_DEBUG=true).
+  await Promise.all(consoleReads)
+  if (analyticsNames.size) {
+    for (const name of ['ai_message_needs_key', 'ai_key_help_opened', 'ai_key_provider_link_clicked', 'ai_key_setup_clicked', 'ai_key_added', 'ai_key_models_saved']) {
+      expect(analyticsNames.has(name), `analytics: no ${name} (seen: ${[...analyticsNames].join(', ')})`)
+    }
+    console.log('✓ analytics: the key request, its help, a company’s key page, the way to Settings and the key being added are tracked')
+  }
   console.log('All AI model checks passed')
 } catch (err) {
   await shot('ai-models-failure.png').catch(() => {})

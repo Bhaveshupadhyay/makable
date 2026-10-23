@@ -1,17 +1,21 @@
+import { MAX_PROMPT } from '@makable/shared'
 import { ArrowUpRight, LoaderCircle } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { useThread } from '@/features/ai-edit'
+import { type ModelStatus, useModelReadiness } from '@/features/ai-models'
 import { useSession } from '@/features/auth'
 import { Landing } from '@/features/marketing'
 import { useSiteStore } from '@/features/site'
+import { analytics } from '@/shared/lib/analytics'
 import { Button } from '@/shared/ui/button'
 import { CreateView } from '../components/create-view'
 import { HomePrompt } from '../components/home-prompt'
 import { useSites } from '../hooks/use-sites'
 import { Workspace } from '../components/workspace'
-import { type CreateSite, useCreateSite } from '../hooks/use-create-site'
+import { type CreateSite, TRY_AGAIN, useCreateSite } from '../hooks/use-create-site'
+import { modelNeededReply, user } from '../lib/chat'
 import { takePendingPrompt } from '../lib/pending-prompt'
-import { useSiteChat } from '../store'
+import { useBuilderStore, useSiteChat } from '../store'
 
 /**
  * The home page. Guests get the landing page, whose prompt box asks them to sign in. Signed in: the landing page
@@ -67,6 +71,7 @@ function Studio({ login }: { login: string }) {
   const thread = useThread(projectId)
   const chat = useSiteChat(projectId)
   const sites = useSites()
+  const model = useModelReadiness()
   const creating = !!creation.creating
 
   // A browser with nothing for this account yet (a new device, cleared data): open their newest site.
@@ -77,10 +82,11 @@ function Studio({ login }: { login: string }) {
     else useSiteStore.setState({ autoOpen: false })
   }, [autoOpen, site, creating, sites.isSuccess, sites.data])
 
-  // What a guest asked for on the landing page before signing in: a new site, once they're back.
+  // What a guest asked for on the landing page before signing in: a new site, once they're back (and the model lists
+  // have said whether there's a model to build it).
   const pendingChecked = useRef(false)
   useEffect(() => {
-    if (pendingChecked.current) return
+    if (pendingChecked.current || model === 'checking') return
     pendingChecked.current = true
     const prompt = takePendingPrompt()
     if (!prompt) return
@@ -89,8 +95,17 @@ function Studio({ login }: { login: string }) {
     if (site && Object.keys(dirty).length > 0) return
     if (site) useSiteStore.getState().newSite()
     else useSiteStore.setState({ autoOpen: false })
-    creation.start(prompt)
-  }, [creation])
+    if (model === 'ready') creation.start(prompt)
+    else askForKey(prompt, model)
+  }, [creation, model])
+
+  // Its result goes back to the prompt box: false (refused, e.g. too long) keeps the text there.
+  function start(prompt: string) {
+    // A prompt that can't go anyway (too long) is refused with why, before any key is asked for; while the lists load,
+    // it goes out, and a model error then asks for a key all the same.
+    if (model === 'ready' || model === 'checking' || prompt.trim().length > MAX_PROMPT) return creation.start(prompt)
+    askForKey(prompt, model)
+  }
 
   if (site?.repoName) return <Workspace login={login} />
   const createRun = thread.data?.run?.mode === 'create'
@@ -104,10 +119,22 @@ function Studio({ login }: { login: string }) {
   if (autoOpen && sites.isPending) return <Spinner />
   return (
     <Landing>
-      <HomePrompt signedIn onStart={creation.start} busy={creating} />
+      <HomePrompt signedIn onStart={start} busy={creating} />
       <RecentSites creation={creation} />
     </Landing>
   )
+}
+
+/**
+ * A new site's prompt with no AI model to build it: the chat keeps it, with makable asking for an API key and the way to
+ * Settings. Try again builds it once there's a model.
+ */
+function askForKey(prompt: string, status: Exclude<ModelStatus, 'ready'>) {
+  analytics.track('ai_message_needs_key', { status, where: 'landing' })
+  const { projectId } = useSiteStore.getState()
+  const { say } = useBuilderStore.getState()
+  say(projectId, user(prompt.trim()))
+  say(projectId, modelNeededReply(status, { replies: [TRY_AGAIN] }))
 }
 
 /** Below the prompt: the user's latest sites, to go back to one. */
