@@ -15,7 +15,9 @@ const AVAILABLE = ['gpt-4.1-mini', 'gpt-5', 'o4-mini']
 const PROVIDERS = [
   { id: 'openai', name: 'OpenAI', keysUrl: 'https://platform.openai.com/api-keys' },
   { id: 'groq', name: 'Groq', keysUrl: 'https://console.groq.com/keys' },
+  { id: 'gemini', name: 'Google Gemini', keysUrl: 'https://aistudio.google.com/apikey' },
 ]
+const GEMINI_KEYS = PROVIDERS[2].keysUrl
 
 // --- The fake backend ---
 // `makableModel: false` is a backend without AI_BASE_URL: users need their own key.
@@ -127,6 +129,18 @@ try {
   await page.getByRole('button', { name: 'What’s an API key?' }).click()
   const keyHelp = page.getByRole('dialog').filter({ hasText: 'A private code from an AI company' })
   await keyHelp.waitFor()
+  // The free option, and each company's own page for making a key, so nobody has to search for it.
+  const freeKey = keyHelp.getByRole('link', { name: 'Get a free Gemini key' })
+  expect((await freeKey.getAttribute('href')) === GEMINI_KEYS, 'the free tip links to Gemini’s page for making a key')
+  const providerLinks = keyHelp.getByRole('list', { name: 'Where to get an API key' }).getByRole('link')
+  expect(
+    JSON.stringify(await providerLinks.evaluateAll((links) => links.map((a) => a.getAttribute('href')))) === JSON.stringify(PROVIDERS.map((p) => p.keysUrl)),
+    'each company links to its own page for making a key',
+  )
+  await page.context().route(/^https:\/\/aistudio\.google\.com\//, (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>AI Studio</title>' }))
+  const [studio] = await Promise.all([page.waitForEvent('popup'), freeKey.click()])
+  expect(studio.url() === GEMINI_KEYS, `the free tip opens Gemini’s key page, got ${studio.url()}`)
+  await studio.close()
   await shot('chat-api-key-help.png')
   await page.keyboard.press('Escape')
   await keyHelp.waitFor({ state: 'detached' })
@@ -164,8 +178,16 @@ try {
   await shot('ai-needs-key.png')
   await popover.getByRole('link', { name: 'Add an API key' }).click()
   await page.getByRole('heading', { name: 'AI models' }).waitFor()
-  await page.getByText('No keys yet').waitFor()
-  console.log('✓ no model: AI mode asks for an API key (hint and box) and links to Settings')
+  await page.getByText('No keys yet. Add one above to start building.').waitFor()
+  // With no key yet, Settings suggests the free option too, and the form links to the chosen company's key page.
+  await page.getByText('Want it free?').waitFor()
+  expect((await page.getByRole('option', { name: 'Google Gemini (free tier)' }).count()) === 1, 'Gemini is marked as free in the list')
+  expect((await page.getByRole('link', { name: 'Get your OpenAI API key' }).getAttribute('href')) === PROVIDERS[0].keysUrl, 'the form links to OpenAI’s key page')
+  await page.getByLabel('Provider').selectOption('gemini')
+  expect((await page.getByRole('link', { name: 'Get your Google Gemini API key' }).getAttribute('href')) === GEMINI_KEYS, 'the link follows the chosen company')
+  await shot('ai-settings-no-keys.png')
+  await page.getByLabel('Provider').selectOption('openai')
+  console.log('✓ no model: AI mode asks for an API key (hint and box) and links to Settings, which suggests Gemini’s free tier')
 
   const keyInput = page.getByLabel('API key', { exact: true })
   await keyInput.fill('sk-wrong')
@@ -252,10 +274,10 @@ try {
   // Each step of asking for a key is tracked (when the dev server logs analytics: VITE_ANALYTICS_DEBUG=true).
   await Promise.all(consoleReads)
   if (analyticsNames.size) {
-    for (const name of ['ai_message_needs_key', 'ai_key_help_opened', 'ai_key_setup_clicked', 'ai_key_added', 'ai_key_models_saved']) {
+    for (const name of ['ai_message_needs_key', 'ai_key_help_opened', 'ai_key_provider_link_clicked', 'ai_key_setup_clicked', 'ai_key_added', 'ai_key_models_saved']) {
       expect(analyticsNames.has(name), `analytics: no ${name} (seen: ${[...analyticsNames].join(', ')})`)
     }
-    console.log('✓ analytics: the key request, its help, the way to Settings and the key being added are tracked')
+    console.log('✓ analytics: the key request, its help, a company’s key page, the way to Settings and the key being added are tracked')
   }
   console.log('All AI model checks passed')
 } catch (err) {

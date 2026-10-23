@@ -6,7 +6,8 @@ import { Button } from '@/shared/ui/button'
 import { GithubIcon } from '@/shared/ui/github-icon'
 import { AddKeyForm } from '../components/add-key-form'
 import { KeyCard } from '../components/key-card'
-import { useAiKeys, useAiProviders } from '../hooks/use-ai-keys'
+import { FreeKeyTip } from '../components/provider-links'
+import { useAiKeys, useAiProviders, useModelOptions } from '../hooks/use-ai-keys'
 import { errorText } from '../lib/error-text'
 
 /** Settings → AI models: the user's own provider keys, and which of their models the chat offers. */
@@ -14,6 +15,8 @@ export function AiSettingsPage() {
   const session = useSession()
   const providers = useAiProviders()
   const keys = useAiKeys()
+  // makable's own model, when the server has one: until a key is added, AI edits use it.
+  const makableModel = useModelOptions().data?.some((o) => !o.keyId) ?? false
   // The key whose model checklist is open (a key that was just added opens it).
   const [choosing, setChoosing] = useState<string | null>(null)
 
@@ -64,7 +67,12 @@ export function AiSettingsPage() {
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">No keys yet. Until you add one, AI edits use makable's own model.</p>
+            <>
+              <p className="text-sm text-muted-foreground">
+                {makableModel ? "No keys yet. Until you add one, AI edits use makable's own model." : 'No keys yet. Add one above to start building.'}
+              </p>
+              <FreeKeyTip source="settings" />
+            </>
           )}
         </>
       )}
