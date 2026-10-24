@@ -83,10 +83,13 @@ async function openTab() {
   await tab.route('**/api/v1/auth/github/login**', (route) => {
     const returnTo = new URL(route.request().url()).searchParams.get('returnTo')
     seen.logins.push(returnTo)
+    // No Content cancels the navigation: the page that left stays, as a back/forward cache restore brings it back.
+    if (leaveUnfinished) return route.fulfill({ status: 204 })
     return route.fulfill({ status: 200, contentType: 'text/html', body: `<script>location.replace(${JSON.stringify(returnTo)})</script>` })
   })
   return tab
 }
+let leaveUnfinished = false
 
 const shot = (name) => page.screenshot({ path: join(OUT_DIR, name) })
 const frame = () => page.frameLocator('iframe[title="Site preview"]')
@@ -132,6 +135,26 @@ try {
   expect(seen.logins.length === 2, `Connect GitHub again signs in: ${JSON.stringify(seen.logins)}`)
   console.log('✓ load: refused again right after, it asks instead of looping, and Connect GitHub again works')
 
+  // 2b. Back from GitHub's page instead of signing in: the browser can bring the page back from its back/forward cache,
+  // mid-reconnect. Playwright turns that cache off, so the sign-in is cancelled (the page that left stays) and the page
+  // gets the `pageshow` a restore fires. It loads afresh and offers Connect GitHub again, since the reconnect just went.
+  // Playwright's own calls wait for the cancelled navigation to finish, so these go through the DevTools protocol.
+  await forgetLastReconnect()
+  leaveUnfinished = true
+  refuse.load = 2
+  await page.reload()
+  await until(() => seen.logins.length === 3, 'the sign-in after the refused load')
+  leaveUnfinished = false
+  const cdp = await page.context().newCDPSession(page)
+  const run = async (expression) => (await cdp.send('Runtime.evaluate', { expression, returnByValue: true })).result.value
+  expect(await run("document.body.innerText.includes('Connecting to GitHub again')"), 'the page that left is mid-reconnect')
+  await run("window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))")
+  await page.getByRole('button', { name: 'Connect GitHub again' }).waitFor({ timeout: 30_000 })
+  expect(refuse.load === 0 && seen.logins.length === 3, `loaded afresh, without another sign-in: ${refuse.load} refusals left, ${seen.logins.length} sign-ins`)
+  await page.getByRole('button', { name: 'Connect GitHub again' }).click()
+  await siteShown()
+  console.log('✓ load: back from GitHub instead of signing in, the page loads afresh and offers Connect GitHub again')
+
   // 3. Saving edits: the save is refused, the browser signs in again, and the edits come back with it and are saved.
   await forgetLastReconnect()
   await page.getByRole('button', { name: 'Edit text' }).click()
@@ -142,8 +165,9 @@ try {
   await frame().getByText('Warm bread all day').waitFor({ timeout: 30_000 })
   refuse.save = 1
   const savesBefore = site.saves.length
+  let logins = seen.logins.length
   await saveNow()
-  await until(() => seen.logins.length === 3, 'the sign-in after the refused save')
+  await until(() => seen.logins.length === logins + 1, 'the sign-in after the refused save')
   await siteShown('Warm bread all day')
   await saveNow()
   await until(() => site.saves.length > savesBefore, 'the save after coming back')
@@ -156,8 +180,9 @@ try {
   refuse.edit = 1
   const composer = page.getByRole('textbox', { name: 'Message' })
   await composer.fill('Make the heading blue')
+  logins = seen.logins.length
   await composer.press('Enter')
-  await until(() => seen.logins.length === 4, 'the sign-in after the refused AI request')
+  await until(() => seen.logins.length === logins + 1, 'the sign-in after the refused AI request')
   await siteShown()
   await chatSays('Send your request again once you’re back.')
   await chatSays('Make the heading blue')
@@ -172,14 +197,29 @@ try {
   await page.getByRole('button', { name: 'Publish', exact: true }).first().click()
   await chatSays('Where should I publish your site?')
   await page.getByRole('button', { name: 'Vercel', exact: true }).last().click()
+  logins = seen.logins.length
   await page.getByRole('button', { name: "I'll add it on GitHub", exact: true }).last().click()
-  await until(() => seen.logins.length === 5, 'the sign-in after the refused publish')
+  await until(() => seen.logins.length === logins + 1, 'the sign-in after the refused publish')
   await until(() => seen.publishes.length === 2, 'the publish going again once back', 90_000)
   await chatSays("Your site's deploy is set up in")
   expect(seen.publishes[1].baseCommit === site.commit, `the resumed publish builds on the site's commit: ${seen.publishes[1].baseCommit}`)
   await chatSays('I’ll carry on once you’re back.')
   await shot('reconnect-publish.png')
   console.log('✓ publish: a refused publish signs in again and carries on by itself, on the loaded site')
+
+  // 5b. Still refused once back (the site doesn't load): the waiting publish asks to connect GitHub again, instead of
+  // a vague "couldn't save" error.
+  await forgetLastReconnect()
+  refuse.publish = 1
+  refuse.load = 1
+  logins = seen.logins.length
+  await page.getByRole('button', { name: 'Publish', exact: true }).first().click()
+  await until(() => seen.logins.length === logins + 1, 'the sign-in after the refused publish')
+  await chatSays('Connect GitHub again, then try again.')
+  expect(seen.publishes.length === 3 && seen.logins.length === logins + 1, `the publish waits for the reconnect: ${seen.publishes.length} publishes, ${seen.logins.length - logins} sign-ins`)
+  await page.getByRole('button', { name: 'Connect GitHub again' }).first().click()
+  await siteShown()
+  console.log('✓ publish: refused again once back, it asks to connect GitHub again')
 
   // 6. A creation, in a new tab with no sites: refused while it builds, the browser signs in again, Try again builds it.
   site.sites = []
@@ -191,8 +231,9 @@ try {
   refuse.create = 1
   await page.goto(BASE_URL)
   await page.getByPlaceholder('Describe the site you want to build…').fill(PROMPT)
+  logins = seen.logins.length
   await page.getByPlaceholder('Describe the site you want to build…').press('Enter')
-  await until(() => seen.logins.length === 6, 'the sign-in after the refused creation')
+  await until(() => seen.logins.length === logins + 1, 'the sign-in after the refused creation')
   await chatSays('Try again once you’re back.')
   await page.waitForTimeout(1_000)
   expect(seen.creates.length === 1, `coming back must not build it again by itself (${seen.creates.length} creations)`)

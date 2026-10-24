@@ -57,9 +57,12 @@ to makable default. Screenshots: `chat-needs-key.png`, `chat-api-key-help.png`, 
 **`reconnect-smoke.mjs`** (makable's GitHub token stops working: the fake answers 401 `github_reconnect`, and signing in
 is a page that goes straight back to `returnTo`, as GitHub does for an app already allowed): opening a site signs in
 again by itself, back to the same page, with no session refresh; refused again right after, it shows **Connect GitHub
-again** instead of looping, and that button works; a refused save signs in again and the edits are saved after; a
-refused AI request is kept in the chat (sent once) with "send it again"; a refused publish carries on by itself once
-back, on the loaded site; a refused creation (in its stream) offers **Try again**, which builds the same prompt. Each step
+again** instead of looping, and that button works; back from GitHub's page instead of signing in (the page restored
+from the back/forward cache: Playwright turns that cache off, so the sign-in answers 204, which leaves the page as it
+was, and a persisted `pageshow` is fired through the DevTools protocol, since Playwright's own calls wait for that
+cancelled navigation), the page loads afresh and offers Connect GitHub again; a refused save signs in again and the edits are saved
+after; a refused AI request is kept in the chat (sent once) with "send it again"; a refused publish carries on by itself
+once back, on the loaded site, and asks to connect GitHub again when the site is still refused then; a refused creation (in its stream) offers **Try again**, which builds the same prompt. Each step
 clears the tab's `makable:github-reconnect` so it can reconnect again. Screenshots: `reconnect-manual.png`,
 `reconnect-ai.png`, `reconnect-publish.png`, `reconnect-create.png`.
 

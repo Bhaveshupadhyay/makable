@@ -148,7 +148,7 @@ function createSiteSync(onStatus: (status: SyncStatus) => void) {
       set(isDirty() ? { state: 'pending' } : { state: 'saved', at: lastSavedAt })
       if (isDirty()) changed()
     } catch (e) {
-      if (needsGithubReconnect(e)) return lostGithub('load-failed', (e as ApiError).message)
+      if (needsGithubReconnect(e)) return lostGithub('load-failed', e as ApiError)
       set({ state: 'load-failed', message: e instanceof ApiError && e.code ? e.message : "Couldn't load your site from GitHub." })
     } finally {
       if (loading === projectId) loading = null
@@ -221,7 +221,7 @@ function createSiteSync(onStatus: (status: SyncStatus) => void) {
       return set({ state: 'conflict' })
     }
     // The edits are kept in the browser (persisted), so they're saved once it's back with a new token.
-    if (needsGithubReconnect(e)) return lostGithub('blocked', (e as ApiError).message)
+    if (needsGithubReconnect(e)) return lostGithub('blocked', e as ApiError)
     if (e instanceof ApiError && (e.status === 401 || (e.code && BLOCKING.has(e.code)))) {
       return set({ state: 'blocked', message: e.status === 401 ? 'Connect GitHub again to keep saving.' : e.message })
     }
@@ -238,9 +238,11 @@ function createSiteSync(onStatus: (status: SyncStatus) => void) {
   }
 
   /** makable's GitHub token stopped working: sign in again for a new one, or ask the user to when that can't go now. */
-  function lostGithub(state: 'load-failed' | 'blocked', message: string) {
+  function lostGithub(state: 'load-failed' | 'blocked', error: ApiError) {
+    // What `flush` throws too, so a publish or AI request waiting on a failed load offers the reconnect as well.
+    lastError = error
     if (reconnectGithub('site')) return set({ state: 'reconnecting' })
-    set({ state, message, reconnect: true })
+    set({ state, message: error.message, reconnect: true })
   }
 
   /** The tab is in view again: a reconnect that waited while it was hidden goes now. */

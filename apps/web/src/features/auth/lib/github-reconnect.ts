@@ -64,5 +64,11 @@ export const reconnectGithub = createGithubReconnect({
   storage: () => sessionStorage,
   now: () => Date.now(),
   hidden: () => document.visibilityState === 'hidden',
-  go: () => loginWithGithub(window.location.pathname + window.location.search),
+  go: () => {
+    // Back from GitHub's page instead of signing in, this page can come back from the back/forward cache as it was:
+    // mid-reconnect (saves paused, a publish waiting), with nothing left to finish it. Load it afresh instead, which
+    // offers Connect GitHub again, since the reconnect just went.
+    window.addEventListener('pageshow', (event) => event.persisted && window.location.reload(), { once: true })
+    loginWithGithub(window.location.pathname + window.location.search)
+  },
 })
