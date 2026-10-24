@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { needsGithubReconnect, reconnectGithub } from '@/features/auth'
 import { type SiteSync, useSiteStore } from '@/features/site'
 import { analytics } from '@/shared/lib/analytics'
 import { ApiError } from '@/shared/lib/api-client'
@@ -20,14 +21,14 @@ const KEEP_TOKEN = new Set(['platform_account_required', 'platform_project_taken
 // the backend allows one publish at a time per user, so a second request would be refused.
 const started = new Set<string>()
 
-type Deps = { projectId: string; ctx: PublishContext; sync: Pick<SiteSync, 'flush' | 'reload'> }
+type Deps = { projectId: string; ctx: PublishContext; sync: Pick<SiteSync, 'status' | 'flush' | 'reload'> }
 
 /**
  * Publishing in the chat: `dispatch` moves the publish flow, and this carries out what a `running` stage asks for
  * (the user's edits are saved first, then the site is published from its repo, or the deploy is run again), then
  * follows a `deploying` stage until the deploy finishes.
  */
-export function usePublish(projectId: string, ctx: PublishContext, sync: Pick<SiteSync, 'flush' | 'reload'>) {
+export function usePublish(projectId: string, ctx: PublishContext, sync: Pick<SiteSync, 'status' | 'flush' | 'reload'>) {
   const chat = useSiteChat(projectId)
   const deps = useRef<Deps>({ projectId, ctx, sync })
   useEffect(() => {
@@ -41,11 +42,14 @@ export function usePublish(projectId: string, ctx: PublishContext, sync: Pick<Si
 
   const flow = chat.publish
   const runId = flow?.stage === 'running' ? flow.runId : undefined
+  // A run still `running` when the page opens (back from signing in to GitHub again, or a reload) waits for the site's
+  // files: saving the edits first needs them.
+  const loading = sync.status.state === 'loading' || sync.status.state === 'reconnecting'
   useEffect(() => {
-    if (!runId || !flow || started.has(runId)) return
+    if (!runId || !flow || loading || started.has(runId)) return
     started.add(runId)
     void execute(flow, () => deps.current)
-  }, [runId, flow])
+  }, [runId, flow, loading])
 
   const deploying = flow?.stage === 'deploying' ? flow : undefined
   const since = deploying?.since
@@ -144,6 +148,9 @@ async function execute(flow: PublishFlow, get: () => Deps): Promise<void> {
     if (!code || !KEEP_TOKEN.has(code)) publishToken.clear()
     const message = e instanceof ApiError ? e.message : "Couldn't reach the makable server."
     analytics.track('publish_failed', { code: code ?? null, message })
+    // makable's GitHub token stopped working: the browser signs in again, and the run, still `running` in the stored
+    // chat, goes again once it's back (this page's `started` goes with it).
+    if (needsGithubReconnect(e) && reconnectGithub('publish')) return report({ type: 'publish-reconnecting' })
     report({ type: 'publish-failed', code, message, details: e instanceof ApiError ? e.details : undefined })
   }
 }

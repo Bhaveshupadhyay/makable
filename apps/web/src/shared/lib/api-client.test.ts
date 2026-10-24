@@ -88,6 +88,13 @@ test('throws the 401 when the refresh says the session is over', async () => {
   expect(calls).toHaveLength(2)
 })
 
+test("a 401 for makable's GitHub token is thrown as it is: no refresh, no second request", async () => {
+  const calls = mockFetch(() => json(401, { success: false, error: { code: 'github_reconnect', message: 'Your GitHub connection has expired.' } }))
+
+  await expect(backendFetch('/ai/edit', { method: 'POST' })).rejects.toMatchObject({ status: 401, code: 'github_reconnect', message: 'Your GitHub connection has expired.' })
+  expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(['POST /api/v1/ai/edit'])
+})
+
 test('a refresh outage is thrown, not reported as signed out', async () => {
   mockFetch(({ url }) => (url === '/api/v1/auth/refresh' ? new Response('Bad Gateway', { status: 502 }) : unauthorized()))
   await expect(backendFetch('/auth/session')).rejects.toMatchObject({ status: 502 })

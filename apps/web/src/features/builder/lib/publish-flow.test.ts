@@ -140,6 +140,18 @@ test('taken project names, accounts, reconnecting, a lost token, a conflict and 
   expect(run([{ type: 'publish' }, 'Cancel']).publish).toBeUndefined()
 })
 
+test('while GitHub is connected again, the same run stays running, so it goes again after the sign-in', () => {
+  const running = run([{ type: 'publish' }, 'Vercel', "I'll add it on GitHub"])
+  const away = run([{ type: 'publish-reconnecting' }], running)
+
+  expect(away.publish).toEqual(running.publish)
+  expect(last(away).text).toContain('connecting it again')
+  expect(last(away).widget).toBeUndefined()
+  // A run that ended meanwhile isn't brought back.
+  const cancelled = run([{ type: 'publish' }, 'Cancel'])
+  expect(run([{ type: 'publish-reconnecting' }], cancelled)).toBe(cancelled)
+})
+
 test('after a failure, other chat is not an answer', () => {
   const running = run([{ type: 'publish' }, 'Vercel', "I'll add it on GitHub"])
   const failed = run([{ type: 'publish-failed', code: 'internal_error', message: 'Boom' }], running)

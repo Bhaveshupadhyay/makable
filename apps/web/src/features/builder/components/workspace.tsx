@@ -14,6 +14,7 @@ import { awaitingToken, dropStalePublish, PUBLISH_REQUEST, type PublishContext, 
 import { useBuilderStore, useSiteChat } from '../store'
 import { ChatMessage } from './chat-message'
 import { ChatPanel } from './chat-panel'
+import { ConnectGithub } from './connect-github'
 import { PublishButton } from './publish-button'
 import { PublishTokenForm } from './publish-token-form'
 import { type PreviewBridge, SitePreview } from './site-preview'
@@ -47,7 +48,10 @@ export function Workspace({ login }: { login: string }) {
     note: (note: AiNote) => {
       const { say } = useBuilderStore.getState()
       if (note.instruction) say(projectId, user(note.instruction, { caption: note.target }))
-      say(projectId, assistant(note.text, note.error ? { tone: 'error', settingsLink: note.settings } : {}))
+      say(
+        projectId,
+        assistant(note.text, note.error ? { tone: 'error', settingsLink: note.settings, ...(note.reconnect ? { widget: 'reconnect-github' as const } : {}) } : {}),
+      )
     },
   })
   const publishing = publish.flow?.stage === 'running'
@@ -226,10 +230,14 @@ function PreviewMessage({ sync }: { sync: SiteSync }) {
       {failed ? (
         <>
           <p>{status.message}</p>
-          {status.state === 'load-failed' && (
-            <Button variant="outline" size="sm" onClick={sync.reload}>
-              Try again
-            </Button>
+          {status.reconnect ? (
+            <ConnectGithub reconnect />
+          ) : (
+            status.state === 'load-failed' && (
+              <Button variant="outline" size="sm" onClick={sync.reload}>
+                Try again
+              </Button>
+            )
           )}
         </>
       ) : status.state === 'conflict' ? (
@@ -237,7 +245,7 @@ function PreviewMessage({ sync }: { sync: SiteSync }) {
       ) : (
         <>
           <LoaderCircle className="size-4 animate-spin" />
-          <p>Loading your site from GitHub…</p>
+          <p>{status.state === 'reconnecting' ? 'Connecting to GitHub again…' : 'Loading your site from GitHub…'}</p>
         </>
       )}
     </div>

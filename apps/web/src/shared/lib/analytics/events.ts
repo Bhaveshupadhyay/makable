@@ -107,6 +107,11 @@ export type AnalyticsEvents = {
   /** Back from GitHub signed in, after `identify`. The SPA can't tell a first sign-in (sign-up) from a later one. */
   sign_in_completed: { method: 'github' }
   signed_out: Record<string, never>
+  /**
+   * The backend said makable's GitHub token stopped working (`github_reconnect`), found by `source`. `redirected`: the
+   * browser signs in again by itself; false when it just did (the user gets **Connect GitHub again**) or storage is blocked.
+   */
+  github_reconnect_needed: { source: 'site' | 'ai' | 'create' | 'publish'; redirected: boolean }
 
   // Publish
   publish_started: { republish: boolean; target: string | null }
