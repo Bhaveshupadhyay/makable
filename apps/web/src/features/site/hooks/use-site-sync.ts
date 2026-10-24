@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { needsGithubReconnect, reconnectGithub } from '@/features/auth'
 import { analytics } from '@/shared/lib/analytics'
 import { ApiError } from '@/shared/lib/api-client'
 import { getSite, type SiteFiles, saveBody, saveFiles } from '../api/sites'
@@ -9,7 +10,8 @@ import { useSiteStore } from '../store'
 export type SyncStatus =
   /** The site's files are loading from GitHub. */
   | { state: 'loading' }
-  | { state: 'load-failed'; message: string }
+  /** `reconnect`: makable's GitHub token stopped working and the browser just signed in again: the user does it now. */
+  | { state: 'load-failed'; message: string; reconnect?: boolean }
   | { state: 'saved'; at: string | null }
   /** Edits wait for a pause before they're saved. */
   | { state: 'pending' }
@@ -17,9 +19,11 @@ export type SyncStatus =
   /** Saving failed; it's tried again later. */
   | { state: 'error'; message: string }
   /** Saving needs the user first (GitHub must be reconnected, the site is gone). */
-  | { state: 'blocked'; message: string }
+  | { state: 'blocked'; message: string; reconnect?: boolean }
   /** The site changed on GitHub (another tab or device) since this browser's edits were based on it. */
   | { state: 'conflict' }
+  /** makable's GitHub token stopped working: the browser is signing in again for a new one, back to this page. */
+  | { state: 'reconnecting' }
 
 type Reason = 'change' | 'retry' | 'hidden' | 'close' | 'manual' | 'flush'
 
@@ -30,8 +34,8 @@ const SLOW_DOWN: Record<string, string> = {
   too_many_requests: 'Saving too often.',
 }
 
-// Errors the user has to act on; retrying won't help.
-const BLOCKING = new Set(['github_reconnect', 'site_not_found', 'site_repo_missing', 'site_invalid'])
+// Errors the user has to act on; retrying won't help. (`github_reconnect` signs in again first: see `lostGithub`.)
+const BLOCKING = new Set(['site_not_found', 'site_repo_missing', 'site_invalid'])
 
 /**
  * Keeps the site's files: loads them from its repo when the page opens, and saves the user's own edits there as
@@ -64,10 +68,11 @@ export function useSiteSync(active: boolean) {
     }
   }, [active, sync])
 
-  // The last chances before the page goes away: hidden tab (switching apps, locking the phone), then close.
+  // The last chances before the page goes away: hidden tab (switching apps, locking the phone), then close. Back in
+  // view, a GitHub reconnect that waited for it goes.
   useEffect(() => {
     if (!active) return
-    const onVisibility = () => document.visibilityState === 'hidden' && void sync.save('hidden')
+    const onVisibility = () => (document.visibilityState === 'hidden' ? void sync.save('hidden') : sync.visible())
     const onPageHide = () => void sync.save('close')
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('pagehide', onPageHide)
@@ -143,6 +148,7 @@ function createSiteSync(onStatus: (status: SyncStatus) => void) {
       set(isDirty() ? { state: 'pending' } : { state: 'saved', at: lastSavedAt })
       if (isDirty()) changed()
     } catch (e) {
+      if (needsGithubReconnect(e)) return lostGithub('load-failed', (e as ApiError).message)
       set({ state: 'load-failed', message: e instanceof ApiError && e.code ? e.message : "Couldn't load your site from GitHub." })
     } finally {
       if (loading === projectId) loading = null
@@ -184,7 +190,7 @@ function createSiteSync(onStatus: (status: SyncStatus) => void) {
   async function run(reason: Reason): Promise<void> {
     // A conflict or a blocked save waits for the user; only their own action retries it.
     if ((status.state === 'conflict' || status.state === 'blocked') && reason !== 'manual') return
-    if (status.state === 'loading' || status.state === 'load-failed') return
+    if (status.state === 'loading' || status.state === 'load-failed' || status.state === 'reconnecting') return
     // The server asked to wait: the retry timer is already set for when it's over.
     if (Date.now() < notBefore) return
     const { projectId, commitSha, dirty, base } = store()
@@ -214,6 +220,8 @@ function createSiteSync(onStatus: (status: SyncStatus) => void) {
       remote = null
       return set({ state: 'conflict' })
     }
+    // The edits are kept in the browser (persisted), so they're saved once it's back with a new token.
+    if (needsGithubReconnect(e)) return lostGithub('blocked', (e as ApiError).message)
     if (e instanceof ApiError && (e.status === 401 || (e.code && BLOCKING.has(e.code)))) {
       return set({ state: 'blocked', message: e.status === 401 ? 'Connect GitHub again to keep saving.' : e.message })
     }
@@ -227,6 +235,19 @@ function createSiteSync(onStatus: (status: SyncStatus) => void) {
     }
     set({ state: 'error', message: e instanceof ApiError && e.code ? e.message : "Couldn't reach GitHub. Trying again soon." })
     schedule(RETRY_DELAY_MS, 'retry')
+  }
+
+  /** makable's GitHub token stopped working: sign in again for a new one, or ask the user to when that can't go now. */
+  function lostGithub(state: 'load-failed' | 'blocked', message: string) {
+    if (reconnectGithub('site')) return set({ state: 'reconnecting' })
+    set({ state, message, reconnect: true })
+  }
+
+  /** The tab is in view again: a reconnect that waited while it was hidden goes now. */
+  function visible() {
+    if ((status.state === 'load-failed' || status.state === 'blocked') && status.reconnect && reconnectGithub('site')) {
+      set({ state: 'reconnecting' })
+    }
   }
 
   async function resolve(choice: 'keep' | 'load') {
@@ -270,5 +291,5 @@ function createSiteSync(onStatus: (status: SyncStatus) => void) {
     return commitSha
   }
 
-  return { load, changed, cancel, save, flush, resolve }
+  return { load, changed, cancel, save, flush, resolve, visible }
 }

@@ -24,7 +24,7 @@ reaches GitHub, a model or a hosting platform. Test those by hand with the backe
    bun x playwright-core install --only-shell chromium
    cp <repo>/.claude/skills/verify-web/*.mjs .
    ```
-3. **Run them:** `bun smoke.mjs`, `bun publish-smoke.mjs`, `bun ai-models-smoke.mjs`, `bun theme-smoke.mjs` (env: `BASE_URL`, default
+3. **Run them:** `bun smoke.mjs`, `bun publish-smoke.mjs`, `bun ai-models-smoke.mjs`, `bun theme-smoke.mjs`, `bun reconnect-smoke.mjs` (env: `BASE_URL`, default
    `http://localhost:5199`; `OUT_DIR` for screenshots, default cwd). Each prints its steps and exits non-zero on a
    failure or any page/console error.
 4. **Look at the screenshots** with the Read tool. Check the layout, not just the assertions.
@@ -53,6 +53,15 @@ nor is a new site's prompt from the landing page;
 AI mode asks for a key and links to Settings, which suggests Gemini's free tier and links to the chosen company's key page), a refused key, then a good one, two models chosen, the key never on the page
 or in localStorage, a model picked in the AI box and sent, picks remembered over a reload, and a refused key falling back
 to makable default. Screenshots: `chat-needs-key.png`, `chat-api-key-help.png`, `create-needs-key.png`, `ai-needs-key.png`, `ai-settings-no-keys.png`, `ai-settings-choose.png`, `ai-settings.png`, `ai-model-menu.png`.
+
+**`reconnect-smoke.mjs`** (makable's GitHub token stops working: the fake answers 401 `github_reconnect`, and signing in
+is a page that goes straight back to `returnTo`, as GitHub does for an app already allowed): opening a site signs in
+again by itself, back to the same page, with no session refresh; refused again right after, it shows **Connect GitHub
+again** instead of looping, and that button works; a refused save signs in again and the edits are saved after; a
+refused AI request is kept in the chat (sent once) with "send it again"; a refused publish carries on by itself once
+back, on the loaded site; a refused creation (in its stream) offers **Try again**, which builds the same prompt. Each step
+clears the tab's `makable:github-reconnect` so it can reconnect again. Screenshots: `reconnect-manual.png`,
+`reconnect-ai.png`, `reconnect-publish.png`, `reconnect-create.png`.
 
 **`theme-smoke.mjs`** (light and dark mode, on a dark system): with no choice the system's theme (System checked), Light
 picked, saved and kept over a reload, the saved theme set by `index.html` before the app runs (the app's script

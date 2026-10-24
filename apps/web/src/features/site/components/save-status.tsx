@@ -1,5 +1,7 @@
 import { Cloud, CloudAlert, CloudCheck, CloudUpload, ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router'
+import { loginWithGithub } from '@/features/auth'
 import { Button } from '@/shared/ui/button'
 import {
   DropdownMenu,
@@ -9,21 +11,26 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/shared/ui/dropdown-menu'
+import { GithubIcon } from '@/shared/ui/github-icon'
 import type { SiteSync, SyncStatus } from '../hooks/use-site-sync'
 
 /** Where the user's own edits stand, in the header: a menu with the details, Save now and the repo's link. */
 export function SaveStatus({ sync, repoUrl }: { sync: SiteSync; repoUrl: string | null }) {
   const { status } = sync
+  const location = useLocation()
   const now = useNow(status.state === 'saved')
   const { icon: Icon, label } = look(status)
   const problem = status.state === 'error' || status.state === 'blocked' || status.state === 'conflict' || status.state === 'load-failed'
+  const busy = status.state === 'saving' || status.state === 'loading' || status.state === 'reconnecting'
+  // The browser signed in again a moment ago and GitHub still refused: the user does it this time.
+  const reconnect = (status.state === 'load-failed' || status.state === 'blocked') && status.reconnect
 
   return (
     <div className="relative">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="sm" aria-label={`Saving to GitHub: ${label}`} title={`Saving to GitHub: ${label}`}>
-            <Icon className={status.state === 'saving' || status.state === 'loading' ? 'animate-pulse' : problem ? 'text-destructive' : undefined} />
+            <Icon className={busy ? 'animate-pulse' : problem ? 'text-destructive' : undefined} />
             <span className="hidden md:inline">{label}</span>
           </Button>
         </DropdownMenuTrigger>
@@ -33,7 +40,12 @@ export function SaveStatus({ sync, repoUrl }: { sync: SiteSync; repoUrl: string 
             <p className="mt-0.5 text-xs text-muted-foreground">{describe(status, now)}</p>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          {status.state === 'load-failed' ? (
+          {reconnect ? (
+            <DropdownMenuItem onSelect={() => loginWithGithub(location.pathname + location.search)}>
+              <GithubIcon />
+              Connect GitHub again
+            </DropdownMenuItem>
+          ) : status.state === 'load-failed' ? (
             <DropdownMenuItem onSelect={sync.reload}>
               <RefreshCw />
               Load again
@@ -96,6 +108,8 @@ function look(status: SyncStatus): { icon: typeof Cloud; label: string } {
       return { icon: CloudAlert, label: status.state === 'load-failed' ? 'Not loaded' : 'Not saved' }
     case 'conflict':
       return { icon: CloudAlert, label: 'Changed elsewhere' }
+    case 'reconnecting':
+      return { icon: LoaderCircle, label: 'Reconnecting…' }
   }
 }
 
@@ -115,6 +129,9 @@ function describe(status: SyncStatus, now: number): string {
       return status.message
     case 'conflict':
       return 'Changed somewhere else. Choose which version to keep.'
+    case 'reconnecting':
+      // The browser is signing in again for a new GitHub token, back to this page.
+      return 'makable’s access to your GitHub stopped working, so it’s connecting again. Your edits are kept.'
   }
 }
 
