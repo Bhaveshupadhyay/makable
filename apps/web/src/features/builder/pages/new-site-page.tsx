@@ -1,17 +1,18 @@
-import { MAX_PROMPT } from '@makable/shared'
 import { ArrowLeft, LoaderCircle } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useModelReadiness } from '@/features/ai-models'
 import { useSession } from '@/features/auth'
 import { saveEdits, useSiteStore } from '@/features/site'
+import { analytics } from '@/shared/lib/analytics'
 import { ApiError } from '@/shared/lib/api-client'
 import { HomePrompt } from '../components/home-prompt'
-import { savePendingPrompt } from '../lib/pending-prompt'
+import { readNewSiteDraft, saveNewSiteDraft, savePendingPrompt } from '../lib/pending-prompt'
 
 /**
  * `/new`: a new site from a prompt. The open site stays as it is until the prompt is sent (going back returns to it);
- * then its unsaved edits are saved and the builder starts the new site. A guest is asked to sign in first.
+ * then its unsaved edits are saved and the builder starts the new site. A guest is asked to sign in first. What's typed
+ * is kept as a draft, so it's still there after going to the open site (to sort out a save) and back.
  */
 export function NewSitePage() {
   const session = useSession()
@@ -32,12 +33,23 @@ function NewSite({ login }: { login: string | null }) {
   const site = useSiteStore((s) => (mine ? s.site : null))
   const [saving, setSaving] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
+  const [draft] = useState(readNewSiteDraft)
   // Loaded now, so the builder knows at once whether there's a model to build it (or asks for a key in the chat).
   useModelReadiness()
+
+  // Left while the edits were saving (Back): the user is on the site again, so the new site doesn't go.
+  const left = useRef(false)
+  useEffect(() => {
+    left.current = false
+    return () => {
+      left.current = true
+    }
+  }, [])
 
   // The builder takes the prompt from where a guest's waits through sign-in, and starts the site.
   function go(prompt: string) {
     if (mine) useSiteStore.getState().newSite()
+    saveNewSiteDraft(null)
     savePendingPrompt(prompt)
     void navigate('/')
   }
@@ -45,24 +57,29 @@ function NewSite({ login }: { login: string | null }) {
   // Its result goes back to the prompt box: false keeps the text there.
   function start(text: string) {
     const prompt = text.trim()
-    if (prompt.length > MAX_PROMPT) {
-      setProblem(`Keep the description under ${MAX_PROMPT} characters.`)
-      return false
-    }
     setProblem(null)
-    if (!site || Object.keys(useSiteStore.getState().dirty).length === 0) return go(prompt)
+    const { projectId, dirty } = useSiteStore.getState()
+    if (!site || Object.keys(dirty).length === 0) return go(prompt)
     // A new site drops the open one's unsaved edits, so they're saved first.
     setSaving(true)
     saveEdits().then(
-      () => go(prompt),
+      () => {
+        if (left.current) return
+        // Edited again meanwhile (in another tab), or another site opened: what's there now isn't saved, so it stays.
+        const now = useSiteStore.getState()
+        if (now.projectId !== projectId || Object.keys(now.dirty).length > 0) {
+          setSaving(false)
+          setProblem(`${site.name} changed while its edits were saving. Send it again to save those too.`)
+          return
+        }
+        go(prompt)
+      },
       (e: unknown) => {
+        const conflict = e instanceof ApiError && e.code === 'site_conflict'
+        const why = conflict ? 'It changed on GitHub since.' : e instanceof ApiError && e.code ? e.message : "Couldn't reach GitHub."
+        analytics.track('site_save_problem', { state: conflict ? 'conflict' : 'error', message: why, where: 'new-site' })
+        if (left.current) return
         setSaving(false)
-        const why =
-          e instanceof ApiError && e.code === 'site_conflict'
-            ? 'It changed on GitHub since.'
-            : e instanceof ApiError && e.code
-              ? e.message
-              : "Couldn't reach GitHub."
         setProblem(`Your edits to ${site.name} aren't saved yet, so the new site waits. ${why}`)
       },
     )
@@ -80,7 +97,7 @@ function NewSite({ login }: { login: string | null }) {
         Describe it in your own words. makable builds it in a new repo on your GitHub.
       </p>
       <div className="mt-10 w-full">
-        <HomePrompt signedIn={!!login} onStart={start} busy={saving} />
+        <HomePrompt signedIn={!!login} onStart={start} busy={saving} initialText={draft} onTextChange={saveNewSiteDraft} />
       </div>
       <div aria-live="polite" className="mt-4 min-h-5 text-sm">
         {saving && site && (

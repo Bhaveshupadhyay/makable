@@ -48,7 +48,7 @@ export type AnalyticsEvents = {
   site_create_started: { prompt: string; model: string }
   site_created: { duration_ms: number; model: string }
   site_create_failed: { code: string | null; message: string }
-  site_save_problem: { state: 'error' | 'blocked' | 'conflict'; message: string | null }
+  site_save_problem: { state: 'error' | 'blocked' | 'conflict'; message: string | null; where?: 'new-site' }
   site_conflict_resolved: { choice: 'keep-local' | 'load-remote' }
 
   // AI edits

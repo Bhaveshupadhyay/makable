@@ -11,11 +11,19 @@ type ComposerProps = {
   /** While something runs: the button stops it instead of sending. */
   onStop?: () => void
   className?: string
+  /** What the box starts with (a draft kept from before). */
+  initialText?: string
+  /** Every change to the text, for keeping a draft. */
+  onTextChange?: (text: string) => void
 }
 
 /** Message box: Enter sends, Shift+Enter adds a line. */
-export function Composer({ onSend, disabled, placeholder = 'Message makable…', onStop, className }: ComposerProps) {
-  const [text, setText] = useState('')
+export function Composer({ onSend, disabled, placeholder = 'Message makable…', onStop, className, initialText = '', onTextChange }: ComposerProps) {
+  const [text, setTextState] = useState(initialText)
+  const setText = (next: string) => {
+    setTextState(next)
+    onTextChange?.(next)
+  }
 
   function submit(e?: FormEvent) {
     e?.preventDefault()

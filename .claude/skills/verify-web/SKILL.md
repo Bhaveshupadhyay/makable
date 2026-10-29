@@ -55,9 +55,11 @@ or in localStorage, a model picked in the AI box and sent, picks remembered over
 to makable default. Screenshots: `chat-needs-key.png`, `chat-api-key-help.png`, `create-needs-key.png`, `ai-needs-key.png`, `ai-settings-no-keys.png`, `ai-settings-choose.png`, `ai-settings.png`, `ai-model-menu.png`.
 
 **`new-site-smoke.mjs`** (the new site page, `/new`): the site menu's New site opens it and going back returns to
-the open site untouched; a description that's too long stays in the box; a prompt sent there saves the open site's
-unsaved edits first (a conflict keeps the prompt waiting, with why and the way back to the site), then the builder
-starts the new site on a new id; a guest is asked to sign in, the prompt kept for after; a phone. Screenshots:
+the open site with its unsaved edits; a description that's too long stays in the box; a prompt sent there saves the
+open site's unsaved edits first (a conflict keeps the prompt waiting, with why and the way back to the site, and it's
+still in the box after going there and back), then the builder starts the new site on a new id; a guest's too-long
+description is refused before sign-in, another is asked to sign in, kept for after; back from sign-in with the open
+site's edits unsaved, the prompt goes to `/new` in the box; a phone. Screenshots:
 `new-site.png`, `new-site-conflict.png`, `new-site-created.png`, `new-site-guest.png`, `new-site-mobile.png`.
 
 **`reconnect-smoke.mjs`** (makable's GitHub token stops working: the fake answers 401 `github_reconnect`, and signing in
