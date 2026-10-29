@@ -93,7 +93,10 @@ export function useCreateSite() {
       say(projectId, assistant(errorMessage(e), { tone: 'error', replies: [TRY_AGAIN], steps: done, ...(widget ? { widget } : {}) }))
     } finally {
       if (inFlight.current === controller) inFlight.current = null
-      // The thread has the next question, or the finished creation.
+      // The thread has the next question, or the finished creation. A fetch still on its way was sent before the
+      // creation (the page had just opened) and would answer "no thread": a query with no data yet reuses it instead of
+      // fetching again, so it's cancelled first.
+      await queryClient.cancelQueries({ queryKey: threadKey(login, projectId) })
       await queryClient.invalidateQueries({ queryKey: threadKey(login, projectId) })
       // A Stop once the commit had started still builds the site: the thread has it, so open it.
       const thread = queryClient.getQueryData<AiThread>(threadKey(login, projectId))

@@ -1,3 +1,4 @@
+import { MAX_PROMPT } from '@makable/shared'
 import { ArrowUpRight } from 'lucide-react'
 import { useState } from 'react'
 import { SignInDialog } from '@/features/auth'
@@ -13,27 +14,34 @@ type HomePromptProps = {
   signedIn: boolean
   onStart: (prompt: string) => void
   busy?: boolean
+  /** What the box starts with, and its changes (`/new` keeps a draft). */
+  initialText?: string
+  onTextChange?: (text: string) => void
 }
 
 /**
  * The landing page's prompt box: the description of the site to build. Building needs GitHub, so a guest can type but
  * is asked to sign in when they send it (or pick an idea); what they asked for is sent once they're back.
  */
-export function HomePrompt({ signedIn, onStart, busy = false }: HomePromptProps) {
+export function HomePrompt({ signedIn, onStart, busy = false, initialText, onTextChange }: HomePromptProps) {
   const [signingIn, setSigningIn] = useState(false)
+  const [tooLong, setTooLong] = useState(false)
 
   function askToSignIn(prompt: string | null = null) {
     savePendingPrompt(prompt)
     if (!signingIn) analytics.track('github_sign_in_prompted', { reason: 'home' })
     setSigningIn(true)
   }
-  // A guest's text stays in the box, so closing the dialog doesn't lose it.
-  const start = signedIn
-    ? onStart
-    : (text: string) => {
-        askToSignIn(text.trim())
-        return false as const
-      }
+  // A description that can't go stays in the box with why, before a guest is sent to sign in for it. A guest's text
+  // stays in the box too, so closing the dialog doesn't lose it.
+  function start(text: string) {
+    const tooLongNow = text.trim().length > MAX_PROMPT
+    setTooLong(tooLongNow)
+    if (tooLongNow) return false
+    if (signedIn) return onStart(text)
+    askToSignIn(text.trim())
+    return false
+  }
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-4">
@@ -43,8 +51,15 @@ export function HomePrompt({ signedIn, onStart, busy = false }: HomePromptProps)
           disabled={busy}
           placeholder="Describe the site you want to build…"
           className="rounded-[calc(1.5rem-1px)] border-0 p-3 shadow-none [&_textarea]:min-h-16 [&_textarea]:text-base"
+          initialText={initialText}
+          onTextChange={onTextChange}
         />
       </div>
+      {tooLong && (
+        <p role="alert" className="text-sm text-destructive">
+          Keep the description under {MAX_PROMPT} characters.
+        </p>
+      )}
       <div className="flex flex-wrap justify-center gap-2">
         {IDEAS.map((idea) => (
           <button

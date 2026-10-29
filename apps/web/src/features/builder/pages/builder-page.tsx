@@ -1,6 +1,7 @@
 import { MAX_PROMPT } from '@makable/shared'
 import { ArrowUpRight, LoaderCircle } from 'lucide-react'
 import { useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router'
 import { useThread } from '@/features/ai-edit'
 import { type ModelStatus, useModelReadiness } from '@/features/ai-models'
 import { useSession } from '@/features/auth'
@@ -14,7 +15,7 @@ import { useSites } from '../hooks/use-sites'
 import { Workspace } from '../components/workspace'
 import { type CreateSite, TRY_AGAIN, useCreateSite } from '../hooks/use-create-site'
 import { modelNeededReply, user } from '../lib/chat'
-import { takePendingPrompt } from '../lib/pending-prompt'
+import { saveNewSiteDraft, takePendingPrompt } from '../lib/pending-prompt'
 import { useBuilderStore, useSiteChat } from '../store'
 
 /**
@@ -72,6 +73,7 @@ function Studio({ login }: { login: string }) {
   const chat = useSiteChat(projectId)
   const sites = useSites()
   const model = useModelReadiness()
+  const navigate = useNavigate()
   const creating = !!creation.creating
 
   // A browser with nothing for this account yet (a new device, cleared data): open their newest site.
@@ -82,8 +84,8 @@ function Studio({ login }: { login: string }) {
     else useSiteStore.setState({ autoOpen: false })
   }, [autoOpen, site, creating, sites.isSuccess, sites.data])
 
-  // What a guest asked for on the landing page before signing in: a new site, once they're back (and the model lists
-  // have said whether there's a model to build it).
+  // What a guest asked for on the landing page before signing in, or a prompt sent from `/new`: a new site, once
+  // they're back (and the model lists have said whether there's a model to build it).
   const pendingChecked = useRef(false)
   useEffect(() => {
     if (pendingChecked.current || model === 'checking') return
@@ -91,13 +93,19 @@ function Studio({ login }: { login: string }) {
     const prompt = takePendingPrompt()
     if (!prompt) return
     const { site, dirty } = useSiteStore.getState()
-    // Starting another site drops the open one's unsaved edits: keep that site (its workspace saves them) instead.
-    if (site && Object.keys(dirty).length > 0) return
+    // Starting another site drops the open one's unsaved edits: the new site's page has the prompt in its box, and
+    // saves them first when it's sent.
+    if (site && Object.keys(dirty).length > 0) {
+      saveNewSiteDraft(prompt)
+      void navigate('/new', { replace: true })
+      return
+    }
+    saveNewSiteDraft(null)
     if (site) useSiteStore.getState().newSite()
     else useSiteStore.setState({ autoOpen: false })
     if (model === 'ready') creation.start(prompt)
     else askForKey(prompt, model)
-  }, [creation, model])
+  }, [creation, model, navigate])
 
   // Its result goes back to the prompt box: false (refused, e.g. too long) keeps the text there.
   function start(prompt: string) {

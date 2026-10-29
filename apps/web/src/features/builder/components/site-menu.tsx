@@ -1,5 +1,6 @@
 import { Check, ChevronDown, ExternalLink, Plus } from 'lucide-react'
 import { useState } from 'react'
+import { Link } from 'react-router'
 import { type SiteRead, useSiteStore } from '@/features/site'
 import { Button } from '@/shared/ui/button'
 import {
@@ -20,7 +21,7 @@ type SiteMenuProps = {
   onSwitchFailed?: (error: unknown) => void
 }
 
-/** The chat's header: the site's name, and a menu to open another of the user's sites or start a new one. */
+/** The chat's header: the site's name, and a menu to open another of the user's sites or start a new one (`/new`). */
 export function SiteMenu({ disabled = false, beforeSwitch, onSwitchFailed }: SiteMenuProps) {
   const site = useSiteStore((s) => s.site)
   const projectId = useSiteStore((s) => s.projectId)
@@ -49,9 +50,12 @@ export function SiteMenu({ disabled = false, beforeSwitch, onSwitchFailed }: Sit
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-72">
-        <DropdownMenuItem onSelect={() => void switchTo(() => useSiteStore.getState().newSite())}>
-          <Plus />
-          New site
+        {/* The new site's page saves this one's edits when its prompt is sent, and going back returns here. */}
+        <DropdownMenuItem asChild>
+          <Link to="/new">
+            <Plus />
+            New site
+          </Link>
         </DropdownMenuItem>
         {site?.repoUrl && (
           <DropdownMenuItem asChild>
