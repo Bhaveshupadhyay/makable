@@ -82,8 +82,8 @@ function Studio({ login }: { login: string }) {
     else useSiteStore.setState({ autoOpen: false })
   }, [autoOpen, site, creating, sites.isSuccess, sites.data])
 
-  // What a guest asked for on the landing page before signing in: a new site, once they're back (and the model lists
-  // have said whether there's a model to build it).
+  // What a guest asked for on the landing page before signing in, or a prompt sent from `/new`: a new site, once
+  // they're back (and the model lists have said whether there's a model to build it).
   const pendingChecked = useRef(false)
   useEffect(() => {
     if (pendingChecked.current || model === 'checking') return

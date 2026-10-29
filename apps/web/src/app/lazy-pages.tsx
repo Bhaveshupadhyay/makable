@@ -4,3 +4,5 @@ import { lazy } from 'react'
 export const AiSettingsPage = lazy(() => import('@/features/ai-models').then((m) => ({ default: m.AiSettingsPage })))
 
 export const BuilderPage = lazy(() => import('@/features/builder').then((m) => ({ default: m.BuilderPage })))
+
+export const NewSitePage = lazy(() => import('@/features/builder').then((m) => ({ default: m.NewSitePage })))

@@ -24,7 +24,7 @@ reaches GitHub, a model or a hosting platform. Test those by hand with the backe
    bun x playwright-core install --only-shell chromium
    cp <repo>/.claude/skills/verify-web/*.mjs .
    ```
-3. **Run them:** `bun smoke.mjs`, `bun publish-smoke.mjs`, `bun ai-models-smoke.mjs`, `bun theme-smoke.mjs`, `bun reconnect-smoke.mjs` (env: `BASE_URL`, default
+3. **Run them:** `bun smoke.mjs`, `bun publish-smoke.mjs`, `bun ai-models-smoke.mjs`, `bun theme-smoke.mjs`, `bun reconnect-smoke.mjs`, `bun new-site-smoke.mjs` (env: `BASE_URL`, default
    `http://localhost:5199`; `OUT_DIR` for screenshots, default cwd). Each prints its steps and exits non-zero on a
    failure or any page/console error.
 4. **Look at the screenshots** with the Read tool. Check the layout, not just the assertions.
@@ -53,6 +53,12 @@ nor is a new site's prompt from the landing page;
 AI mode asks for a key and links to Settings, which suggests Gemini's free tier and links to the chosen company's key page), a refused key, then a good one, two models chosen, the key never on the page
 or in localStorage, a model picked in the AI box and sent, picks remembered over a reload, and a refused key falling back
 to makable default. Screenshots: `chat-needs-key.png`, `chat-api-key-help.png`, `create-needs-key.png`, `ai-needs-key.png`, `ai-settings-no-keys.png`, `ai-settings-choose.png`, `ai-settings.png`, `ai-model-menu.png`.
+
+**`new-site-smoke.mjs`** (the new site page, `/new`): the site menu's New site opens it and going back returns to
+the open site untouched; a description that's too long stays in the box; a prompt sent there saves the open site's
+unsaved edits first (a conflict keeps the prompt waiting, with why and the way back to the site), then the builder
+starts the new site on a new id; a guest is asked to sign in, the prompt kept for after; a phone. Screenshots:
+`new-site.png`, `new-site-conflict.png`, `new-site-created.png`, `new-site-guest.png`, `new-site-mobile.png`.
 
 **`reconnect-smoke.mjs`** (makable's GitHub token stops working: the fake answers 401 `github_reconnect`, and signing in
 is a page that goes straight back to `returnTo`, as GitHub does for an app already allowed): opening a site signs in
