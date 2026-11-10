@@ -1,6 +1,6 @@
 // The Support menu, end to end in the browser: the real SPA against a scripted makable-backend (see fake-backend.mjs).
-// The header's Support menu is on every page, guests too: email support (a mailto link), the address copied, a 1:1
-// call on Cal.com (a new tab); the landing page's footer has the same two links; the header still fits with the
+// The header's Support menu is on every page, guests too: email support (a mailto link, the user's mail app) and a
+// 1:1 call on Cal.com (a new tab); the landing page's footer has the same two links; the header still fits with the
 // workspace's own actions, from a phone to a desktop. Run the dev server WITHOUT mock auth, with
 // VITE_ANALYTICS_DEBUG=true for the event checks. See SKILL.md.
 import { join } from 'node:path'
@@ -14,7 +14,6 @@ const MEETING_URL = 'https://cal.com/bhavesh-upadhyay-iubvet'
 const site = fakeSites()
 const browser = await launch()
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
-await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(BASE_URL).origin })
 // Cal.com is answered here, so nothing leaves the machine.
 await context.route('https://cal.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Cal.com</title>' }))
 const page = await context.newPage()
@@ -65,7 +64,7 @@ async function expectHeaderFits(width) {
 }
 
 try {
-  // 1. A guest on the landing page: the Support menu, its links and copying the address.
+  // 1. A guest on the landing page: the Support menu and its two links.
   site.signedIn = false
   await page.goto(BASE_URL)
   await page.getByPlaceholder('Describe the site you want to build…').waitFor()
@@ -78,17 +77,9 @@ try {
   const callItem = menu().getByRole('menuitem', { name: /Book a 1:1 call/ })
   expect((await callItem.getAttribute('href')) === MEETING_URL, `Book a 1:1 call must link to Cal.com (${await callItem.getAttribute('href')})`)
   expect((await callItem.getAttribute('target')) === '_blank' && (await callItem.getAttribute('rel')) === 'noreferrer', 'Cal.com must open in a new tab')
+  expect((await menu().getByRole('menuitem').count()) === 2, 'the menu must have just the email and the call')
   await shot('support-menu.png')
-
-  await menu().getByRole('menuitem', { name: 'Copy email address' }).click()
-  await menu().getByRole('menuitem', { name: 'Copied' }).waitFor()
-  expect((await page.evaluate(() => navigator.clipboard.readText())) === EMAIL, 'the address must be on the clipboard')
-  await expectEvent('support_contact_clicked', { channel: 'copy_email', placement: 'header' })
-  await shot('support-menu-copied.png')
-  await page.keyboard.press('Escape')
-  await openSupport()
-  expect(await menu().getByRole('menuitem', { name: 'Copy email address' }).isVisible(), 'opening the menu again must offer to copy again')
-  console.log('✓ guest: Support menu with the mailto link and Cal.com; the address copied and the menu kept open')
+  console.log('✓ guest: Support menu with the mailto link and Cal.com')
 
   const before = page.url()
   await menu().getByRole('menuitem', { name: /Email support/ }).click()

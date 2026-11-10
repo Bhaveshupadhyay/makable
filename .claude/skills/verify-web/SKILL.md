@@ -83,13 +83,12 @@ chrome), Settings, and the header on a phone. Screenshots: `theme-landing-dark.p
 `theme-code-dark.png`, `theme-code-light.png`, `theme-workspace-light.png`, `theme-settings-dark.png`,
 `theme-workspace-mobile-dark.png`, `theme-landing-mobile-dark.png`.
 
-**`support-smoke.mjs`** (the Support menu): a guest sees Support in the header; Email support is a `mailto:` link
-(same tab, the page stays), Copy email address puts it on the clipboard and the menu stays open to say Copied, Book a
-1:1 call opens Cal.com in a new tab (answered by the script, nothing leaves the machine); the landing page's footer has
+**`support-smoke.mjs`** (the Support menu): a guest sees Support in the header with two items; Email support is a
+`mailto:` link that opens the mail app (same tab, the page stays), Book a 1:1 call opens Cal.com in a new tab (answered by the script, nothing leaves the machine); the landing page's footer has
 the address and the call; signed in, the workspace's header (save state, Publish, Support, theme, account) fits without
 its groups running into each other from 360px to 1280px, and the menu fits a phone; dark mode. Each click's
 `support_contact_clicked` is checked when the console logger is on. Screenshots: `support-menu.png`,
-`support-menu-copied.png`, `support-footer.png`, `support-landing-mobile.png`, `support-workspace-header.png`,
+`support-footer.png`, `support-landing-mobile.png`, `support-workspace-header.png`,
 `support-menu-mobile.png`, `support-menu-dark.png`.
 
 **Analytics:** start the dev server with `VITE_ANALYTICS_DEBUG=true VITE_MIXPANEL_TOKEN=smoke-test-token VITE_MIXPANEL_LOCAL=true` to have

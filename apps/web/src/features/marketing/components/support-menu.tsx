@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { ArrowUpRight, CalendarClock, Check, Copy, LifeBuoy, Mail } from 'lucide-react'
+import { ArrowUpRight, CalendarClock, LifeBuoy, Mail } from 'lucide-react'
 import { analytics } from '@/shared/lib/analytics'
 import {
   DropdownMenu,
@@ -11,35 +10,12 @@ import {
 } from '@/shared/ui/dropdown-menu'
 import { MEETING_URL, SUPPORT_EMAIL, SUPPORT_MAILTO } from '../lib/links'
 
-type Copied = 'idle' | 'copied' | 'failed'
+const track = (channel: 'email' | 'call') => analytics.track('support_contact_clicked', { channel, placement: 'header' })
 
-const COPY_LABEL: Record<Copied, string> = {
-  idle: 'Copy email address',
-  copied: 'Copied',
-  failed: 'Couldn’t copy it',
-}
-
-const track = (channel: 'email' | 'copy_email' | 'call') => analytics.track('support_contact_clicked', { channel, placement: 'header' })
-
-/**
- * The header's Support menu, on every page (guests too): email support, or book a 1:1 call on Cal.com.
- * The address can be copied as well, since a mailto link does nothing on a computer with no mail app set up.
- */
+/** The header's Support menu, on every page (guests too): email support in the user's mail app, or book a 1:1 call on Cal.com. */
 export function SupportMenu() {
-  const [copied, setCopied] = useState<Copied>('idle')
-
-  async function copyEmail() {
-    track('copy_email')
-    try {
-      await navigator.clipboard.writeText(SUPPORT_EMAIL)
-      setCopied('copied')
-    } catch {
-      setCopied('failed')
-    }
-  }
-
   return (
-    <DropdownMenu onOpenChange={(open) => open && setCopied('idle')}>
+    <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="Support"
         title="Support"
@@ -63,17 +39,6 @@ export function SupportMenu() {
               <span className="truncate text-xs text-muted-foreground">{SUPPORT_EMAIL}</span>
             </span>
           </a>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          data-analytics="support_copy_email"
-          onSelect={(event) => {
-            // Stay open, so the item can say it's copied.
-            event.preventDefault()
-            void copyEmail()
-          }}
-        >
-          {copied === 'copied' ? <Check /> : <Copy />}
-          <span aria-live="polite">{COPY_LABEL[copied]}</span>
         </DropdownMenuItem>
         <DropdownMenuItem asChild data-analytics="support_call" onSelect={() => track('call')}>
           <a href={MEETING_URL} target="_blank" rel="noreferrer">
