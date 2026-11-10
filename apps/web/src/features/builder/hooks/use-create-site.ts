@@ -2,7 +2,7 @@ import { type AiResult, type AiStreamEvent, aiCreateRequestSchema } from '@makab
 import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { type AiPausedRun, type AiThread, answerCreate, createSite, errorMessage, threadKey } from '@/features/ai-edit'
-import { useSession } from '@/features/auth'
+import { needsGithubReconnect, reconnectGithub, useSession } from '@/features/auth'
 import { useModelChoice, useModelRejected } from '@/features/ai-models'
 import { getSite, useSiteStore } from '@/features/site'
 import { analytics } from '@/shared/lib/analytics'
@@ -82,10 +82,22 @@ export function useCreateSite() {
       const modelError = !!code && MODEL_ERRORS.has(code)
       if (modelError) void modelRejected(choice, code)
       say(projectId, user(prompt))
-      say(projectId, assistant(errorMessage(e), { tone: 'error', replies: [TRY_AGAIN], steps: done, settingsLink: modelError }))
+      // makable's GitHub token stopped working: the browser signs in again and comes back to this chat, where Try
+      // again builds it. When it just did, the user connects GitHub again themselves.
+      const lostGithub = needsGithubReconnect(e)
+      if (lostGithub && reconnectGithub('create')) {
+        say(projectId, assistant('makable’s access to your GitHub stopped working, so I’m connecting it again. Try again once you’re back.', { replies: [TRY_AGAIN], steps: done }))
+        return
+      }
+      // A model error is fixed in Settings: the way there shows while there's no model to use (the lists are refetched).
+      const widget = modelError ? ('add-api-key' as const) : lostGithub ? ('reconnect-github' as const) : undefined
+      say(projectId, assistant(errorMessage(e), { tone: 'error', replies: [TRY_AGAIN], steps: done, settingsLink: modelError, ...(widget ? { widget } : {}) }))
     } finally {
       if (inFlight.current === controller) inFlight.current = null
-      // The thread has the next question, or the finished creation.
+      // The thread has the next question, or the finished creation. A fetch still on its way was sent before the
+      // creation (the page had just opened) and would answer "no thread": a query with no data yet reuses it instead of
+      // fetching again, so it's cancelled first.
+      await queryClient.cancelQueries({ queryKey: threadKey(login, projectId) })
       await queryClient.invalidateQueries({ queryKey: threadKey(login, projectId) })
       // A Stop once the commit had started still builds the site: the thread has it, so open it.
       const thread = queryClient.getQueryData<AiThread>(threadKey(login, projectId))

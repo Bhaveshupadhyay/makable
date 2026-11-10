@@ -87,8 +87,17 @@ export async function backendStream(path: string, init?: RequestInit): Promise<R
 
 async function sendWithRefresh(path: string, init?: RequestInit): Promise<Response> {
   const res = await send(path, init)
-  if (res.status === 401 && path !== REFRESH_PATH && (await refreshSession())) return send(path, init)
+  if (res.status === 401 && path !== REFRESH_PATH && !(await githubRefused(res)) && (await refreshSession())) return send(path, init)
   return res
+}
+
+/**
+ * A 401 about makable's GitHub token (`github_reconnect`), not the session: a new session doesn't fix it (signing in
+ * again does), so the request isn't sent twice.
+ */
+async function githubRefused(res: Response): Promise<boolean> {
+  const body = (await res.clone().json().catch(() => null)) as Envelope<unknown> | null
+  return !!body && !body.success && body.error?.code === 'github_reconnect'
 }
 
 function toApiError(res: Response, body: Envelope<unknown> | null, path: string, init?: RequestInit): ApiError {

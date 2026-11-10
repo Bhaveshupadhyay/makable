@@ -1,7 +1,7 @@
 import { type AiEditRequest, type AiEditTarget, type AiResult, aiEditRequestSchema, MAX_INSTRUCTION, MAX_SCREENSHOT_CHARS } from '@makable/shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { useSession } from '@/features/auth'
+import { needsGithubReconnect, reconnectGithub, useSession } from '@/features/auth'
 import { useModelChoice, useModelRejected } from '@/features/ai-models'
 import { undoChange, useSiteStore } from '@/features/site'
 import { analytics } from '@/shared/lib/analytics'
@@ -46,8 +46,11 @@ type Deps = {
   note: (note: AiNote) => void
 }
 
-/** A request the thread won't show (`instruction`, null for none) and what came of it. */
-export type AiNote = { instruction: string | null; target: string | null; text: string; error: boolean; settings?: boolean }
+/**
+ * A request the thread won't show (`instruction`, null for none) and what came of it. `reconnect`: makable's GitHub
+ * token stopped working and the browser just signed in again, so the user does it (Connect GitHub again).
+ */
+export type AiNote = { instruction: string | null; target: string | null; text: string; error: boolean; settings?: boolean; reconnect?: boolean }
 
 /**
  * AI edits of the site, as one run at a time: the request goes out on the site's commit (the user's edits are saved
@@ -127,8 +130,9 @@ export function useAiRun(deps: Deps) {
       // The site moved on GitHub (another device, or a change this tab missed): load it, and the user sends again.
       if (code === 'site_conflict') latest.current.reload()
       const inSettings = !!code && SETTINGS_ERRORS.has(code)
-      setError({ message: errorMessage(e), inSettings })
-      latest.current.note({ instruction, target, text: errorMessage(e), error: true, settings: inSettings })
+      const told = failure(e)
+      setError({ message: told.text, inSettings })
+      latest.current.note({ instruction, target, ...told, settings: inSettings })
     } finally {
       if (inFlight.current?.controller === controller) inFlight.current = null
       // The chat shows the request as pending until the thread has it.
@@ -145,8 +149,9 @@ export function useAiRun(deps: Deps) {
     try {
       baseCommit = await latest.current.flush()
     } catch (e) {
-      setError({ message: errorMessage(e), inSettings: false })
-      latest.current.note({ instruction, target: label, text: errorMessage(e), error: true })
+      const told = failure(e)
+      setError({ message: told.text, inSettings: false })
+      latest.current.note({ instruction, target: label, ...told })
       return false
     }
     const screenshot = target && acceptsImages ? await latest.current.capture() : undefined
@@ -188,8 +193,9 @@ export function useAiRun(deps: Deps) {
     try {
       baseCommit = await latest.current.flush()
     } catch (e) {
-      setError({ message: errorMessage(e), inSettings: false })
-      latest.current.note({ instruction: null, target: null, text: errorMessage(e), error: true })
+      const told = failure(e)
+      setError({ message: told.text, inSettings: false })
+      latest.current.note({ instruction: null, target: null, ...told })
       return false
     }
     if (chat) analytics.track('ai_question_chatted', { question: paused.question.question, message: text })
@@ -241,7 +247,7 @@ export function useAiRun(deps: Deps) {
       analytics.track('ai_edit_undone', { commit_sha: commitSha })
       return true
     } catch (e) {
-      latest.current.note({ instruction: null, target: null, text: errorMessage(e), error: true })
+      latest.current.note({ instruction: null, target: null, ...failure(e) })
       return false
     }
   }
@@ -284,9 +290,24 @@ export function useAiRun(deps: Deps) {
 
 export type AiRun = ReturnType<typeof useAiRun>
 
+/**
+ * What to tell the user about a request that failed. makable's GitHub token having stopped working starts a reconnect
+ * (the browser signs in again and comes back here, and the user sends the request again), unless it just did.
+ */
+function failure(error: unknown): { text: string; error: boolean; reconnect: boolean } {
+  if (!needsGithubReconnect(error)) return { text: errorMessage(error), error: true, reconnect: false }
+  if (reconnectGithub('ai')) return { text: GITHUB_RECONNECTING, error: false, reconnect: false }
+  return { text: errorMessage(error), error: true, reconnect: true }
+}
+
+/** In the chat while the browser signs in again for a new GitHub token, and after it's back. */
+const GITHUB_RECONNECTING ='makable’s access to your GitHub stopped working, so I’m connecting it again. Send your request again once you’re back.'
+
 /** The backend's messages are written for users; anything else means the request never got an answer. */
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
+    // A 401 for makable's GitHub token, not the session: the backend says what to do.
+    if (needsGithubReconnect(error)) return error.message
     if (error.status === 401) return 'Your session has expired. Connect GitHub again to use AI.'
     if (error.code === 'site_conflict') return 'Your site was changed somewhere else, so I loaded the latest version. Send your request again.'
     if (error.code) return error.message

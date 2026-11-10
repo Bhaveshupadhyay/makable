@@ -131,6 +131,11 @@ export async function routeBackend(page, answer) {
   })
 }
 
+// The demo's backup is Google's player (Drive's, with YouTube's inside it), which logs errors of its own: a sign-in
+// check, and a permissions-policy notice for the Compute Pressure API that only YouTube's player asks for.
+const GOOGLE_FRAME = /^https:\/\/([a-z0-9-]+\.)*(google\.com|googleapis\.com|youtube\.com|gstatic\.com)\//
+const GOOGLE_PLAYER_NOTICE = /^Permissions policy violation: compute-pressure is not allowed/
+
 /**
  * Page errors and console errors, but not the error answers the fake gives on purpose. Set `errors.expected` while a
  * step breaks the preview on purpose: the preview's bundler logs the broken code.
@@ -146,6 +151,7 @@ export function watchErrors(page) {
   })
   page.on('console', (m) => {
     if (m.type() !== 'error' || errors.expected || /status of (401|404|409|422|429|502)/.test(m.text())) return
+    if (GOOGLE_FRAME.test(m.location().url) || GOOGLE_PLAYER_NOTICE.test(m.text())) return
     errors.push(`console: ${m.text()}`)
   })
   return errors

@@ -1,4 +1,5 @@
 export { AddKeyButton, AddKeyPrompt } from './components/add-key-prompt'
+export { ApiKeyExplainer } from './components/api-key-explainer'
 export { ModelPicker } from './components/model-picker'
 export { useModelRejected } from './hooks/use-ai-keys'
 export { useModelChoice, useModelReadiness, useModelStatus } from './hooks/use-model-choice'

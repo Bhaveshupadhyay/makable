@@ -1,4 +1,5 @@
 export { loginWithGithub, MOCK_AUTH, takeSigningIn } from './api/session'
 export { UserMenu } from './components/user-menu'
+export { needsGithubReconnect, reconnectGithub } from './lib/github-reconnect'
 export { useLogout, useSession } from './hooks/use-session'
 export type { SessionUser } from './types'

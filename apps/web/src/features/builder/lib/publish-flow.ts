@@ -49,6 +49,8 @@ export type PublishEvent =
   | { type: 'publish-done'; result: PublishResult }
   | { type: 'deploy-started'; actionsUrl: string; since: string }
   | { type: 'publish-failed'; code: string | undefined; message: string; details?: unknown }
+  /** makable's GitHub token stopped working and the browser is signing in again: the run goes again once it's back. */
+  | { type: 'publish-reconnecting' }
   /** The deploy workflow finished, or null when it took too long to wait for. */
   | { type: 'deploy-finished'; run: WorkflowRun | null }
 
@@ -278,6 +280,11 @@ function publishOutcome(state: LocalChat, event: Exclude<PublishEvent, { type: '
     }
     case 'publish-failed':
       return failed(state, flow, event, ctx)
+    case 'publish-reconnecting':
+      // The flow stays as it is (`running`, same run), so the page that loads after the sign-in runs it.
+      return flow.stage === 'running'
+        ? say(state, flow, 'makable’s access to your GitHub stopped working, so I’m connecting it again. I’ll carry on once you’re back.')
+        : state
   }
 }
 

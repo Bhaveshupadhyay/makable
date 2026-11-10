@@ -34,13 +34,27 @@ export function saveBody(save: SiteSave): string {
  * backend answers 409 `site_conflict` with the current `commitSha` and writes nothing. `keepalive` lets it finish
  * after the page closes (browsers cap those bodies at ~64 KB).
  */
+// The saves on their way, answered or not: another save of the same edits waits for them (it'd be a conflict).
+const sending = new Set<Promise<unknown>>()
+
 export function saveFiles(projectId: string, save: SiteSave, { keepalive = false } = {}): Promise<SiteSaved> {
-  return backendFetch<SiteSaved>(`/sites/${projectId}/files`, {
+  const request = backendFetch<SiteSaved>(`/sites/${projectId}/files`, {
     method: 'PUT',
     keepalive,
     headers: { 'Content-Type': 'application/json' },
     body: saveBody(save),
   })
+  const answered: Promise<unknown> = request.then(
+    () => sending.delete(answered),
+    () => sending.delete(answered),
+  )
+  sending.add(answered)
+  return request
+}
+
+/** Resolves once the saves already sent have been answered (whatever the answer), and their callers have seen it. */
+export function savesAnswered(): Promise<unknown> {
+  return Promise.all(sending)
 }
 
 /** Undoes a commit's changes (an AI edit) with a new commit on top of `baseCommit`. */

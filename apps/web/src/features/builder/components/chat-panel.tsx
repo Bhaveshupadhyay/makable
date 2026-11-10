@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef } from 'react'
+import { AddKeyButton, ApiKeyExplainer, useModelStatus } from '@/features/ai-models'
 import { cn } from '@/shared/lib/cn'
 import { Button } from '@/shared/ui/button'
 import type { ChatMessage as ChatMessageType } from '../lib/chat'
@@ -60,6 +61,7 @@ export function ChatPanel({
           {messages.map((message) => (
             <ChatMessage key={message.id} message={message} onUndo={onUndo} undoDisabled={undoDisabled}>
               {message.widget === 'reconnect-github' && message === latest && <ConnectGithub reconnect />}
+              {message.widget === 'add-api-key' && message === latest && <AddKeyAction />}
               {message === latest && latestExtra}
               {message === latest && repliesEnabled && message.replies && message.replies.length > 0 && (
                 <div className="flex flex-wrap gap-2">
@@ -82,6 +84,21 @@ export function ChatPanel({
           {footer ?? <Composer onSend={onSend} disabled={composerDisabled} placeholder={placeholder} onStop={onStop} />}
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * The way to Settings while there's no AI model to use, and what an API key is for those who don't know; gone once
+ * there's a model (the message is sent again from the composer).
+ */
+function AddKeyAction() {
+  const status = useModelStatus()
+  if (status === 'ready') return null
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <AddKeyButton status={status} source="chat" />
+      <ApiKeyExplainer source="chat" />
     </div>
   )
 }

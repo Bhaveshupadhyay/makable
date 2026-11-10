@@ -9,12 +9,13 @@ const IDEAS = ['A landing page for a neighbourhood bakery', 'A portfolio for a p
 type HomePromptProps = {
   onStart: (prompt: string) => void
   busy?: boolean
-  /** Text already in the box (what a guest asked for, back from their chat). */
+  /** What the box starts with, and its changes (`/new` keeps a draft). */
   initialText?: string
+  onTextChange?: (text: string) => void
 }
 
 /** The landing page's prompt box: the description of the site to build, typed or picked from the ideas. */
-export function HomePrompt({ onStart, busy = false, initialText }: HomePromptProps) {
+export function HomePrompt({ onStart, busy = false, initialText, onTextChange }: HomePromptProps) {
   const [problem, setProblem] = useState<string | null>(null)
 
   // A description the request would refuse stays in the box to shorten, so it's never kept for after sign-in.
@@ -34,6 +35,7 @@ export function HomePrompt({ onStart, busy = false, initialText }: HomePromptPro
           initialText={initialText}
           placeholder="Describe the site you want to build…"
           className="rounded-[calc(1.5rem-1px)] border-0 p-3 shadow-none [&_textarea]:min-h-16 [&_textarea]:text-base"
+          onTextChange={onTextChange}
         />
       </div>
       {problem && (
@@ -47,7 +49,7 @@ export function HomePrompt({ onStart, busy = false, initialText }: HomePromptPro
             key={idea}
             type="button"
             disabled={busy}
-            onClick={() => onStart(idea)}
+            onClick={() => send(idea)}
             className="inline-flex items-center gap-1 rounded-full border bg-background/70 px-3 py-1.5 text-sm text-muted-foreground shadow-xs backdrop-blur transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
           >
             {idea}

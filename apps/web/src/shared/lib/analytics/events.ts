@@ -38,14 +38,17 @@ export type AnalyticsEvents = {
    * `watched_seconds`: how much of it played, without the parts skipped over.
    */
   demo_video_closed: { reason: 'dismissed' | 'ended'; watched_seconds: number; ended: boolean }
-  /** The video couldn't load or play: `code` is the `MediaError` code (2 network, 3 decode, 4 not supported). */
+  /**
+   * R2's copy couldn't load or play, so the backup on Google Drive shows instead: `code` is the `MediaError` code (2
+   * network, 3 decode, 4 not supported), or null with `message: 'stalled'` when it had nothing to play 15 s after a play.
+   */
   demo_video_failed: { placement: 'dialog' | 'landing'; code: number | null; message: string }
 
   // Sites built from a prompt
   site_create_started: { prompt: string; model: string }
   site_created: { duration_ms: number; model: string }
   site_create_failed: { code: string | null; message: string }
-  site_save_problem: { state: 'error' | 'blocked' | 'conflict'; message: string | null }
+  site_save_problem: { state: 'error' | 'blocked' | 'conflict'; message: string | null; where?: 'new-site' }
   site_conflict_resolved: { choice: 'keep-local' | 'load-remote' }
 
   // AI edits
@@ -86,6 +89,17 @@ export type AnalyticsEvents = {
   ai_key_added: { provider: string; models_available: number }
   ai_key_add_failed: { provider: string; code: string | null }
   ai_key_checked: { key_id: string; ok: boolean; code: string | null }
+  /** A chat message wasn't sent for want of an AI model; the chat asked for a key (`no-key`, `no-models` or `key-invalid`). */
+  ai_message_needs_key: { status: string; where: 'landing' | 'workspace' | 'create' }
+  /** The way to Settings for a missing key or model was clicked: under the chat's request for a key, or in the AI box. */
+  ai_key_setup_clicked: { status: string; source: 'chat' | 'ai_box' }
+  /** "What’s an API key?" was opened, under the chat's request for a key. */
+  ai_key_help_opened: { source: 'chat' }
+  /**
+   * A link to an AI company's page for making an API key was clicked: in "What’s an API key?" (`source: 'chat'`) or in
+   * Settings; from the free-tier tip (Gemini), the list of companies, or the add-key form.
+   */
+  ai_key_provider_link_clicked: { provider: string; source: 'chat' | 'settings'; placement: 'free_tip' | 'providers' | 'form' }
   ai_key_models_saved: { key_id: string; models: string[] }
   ai_key_removed: { key_id: string }
   ai_model_picked: { model: string; provider: string | null; is_default: boolean }
@@ -95,6 +109,11 @@ export type AnalyticsEvents = {
   /** Back from GitHub signed in, after `identify`. The SPA can't tell a first sign-in (sign-up) from a later one. */
   sign_in_completed: { method: 'github' }
   signed_out: Record<string, never>
+  /**
+   * The backend said makable's GitHub token stopped working (`github_reconnect`), found by `source`. `redirected`: the
+   * browser signs in again by itself; false when it just did (the user gets **Connect GitHub again**) or storage is blocked.
+   */
+  github_reconnect_needed: { source: 'site' | 'ai' | 'create' | 'publish'; redirected: boolean }
 
   // Publish
   publish_started: { republish: boolean; target: string | null }

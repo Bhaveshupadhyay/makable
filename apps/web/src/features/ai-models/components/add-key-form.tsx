@@ -1,10 +1,12 @@
 import { ExternalLink, KeyRound, LoaderCircle } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
+import { analytics } from '@/shared/lib/analytics'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Label } from '@/shared/ui/label'
 import { useAddKey } from '../hooks/use-ai-keys'
 import { errorText } from '../lib/error-text'
+import { FREE_PROVIDER } from '../lib/providers'
 import type { AiKey, AiProvider, AiProviderId } from '../types'
 
 type AddKeyFormProps = {
@@ -53,7 +55,7 @@ export function AddKeyForm({ providers, keys, onAdded }: AddKeyFormProps) {
           >
             {providers.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name}
+                {p.id === FREE_PROVIDER ? `${p.name} (free tier)` : p.name}
               </option>
             ))}
           </select>
@@ -75,10 +77,18 @@ export function AddKeyForm({ providers, keys, onAdded }: AddKeyFormProps) {
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
         {spec && (
-          <a href={spec.keysUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline">
-            Get a key from {spec.name}
-            <ExternalLink className="size-3" />
-          </a>
+          // The provider's own page for making a key, so nobody has to search for it.
+          <Button asChild variant="outline" size="sm">
+            <a
+              href={spec.keysUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => analytics.track('ai_key_provider_link_clicked', { provider: spec.id, source: 'settings', placement: 'form' })}
+            >
+              Get your {spec.name} API key
+              <ExternalLink />
+            </a>
+          </Button>
         )}
         <Button type="submit" size="sm" disabled={!apiKey.trim() || add.isPending} className="ml-auto">
           {add.isPending ? <LoaderCircle className="animate-spin" /> : <KeyRound />}
