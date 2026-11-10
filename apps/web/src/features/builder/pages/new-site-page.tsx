@@ -97,7 +97,7 @@ function NewSite({ login }: { login: string | null }) {
         Describe it in your own words. makable builds it in a new repo on your GitHub.
       </p>
       <div className="mt-10 w-full">
-        <HomePrompt signedIn={!!login} onStart={start} busy={saving} initialText={draft} onTextChange={saveNewSiteDraft} />
+        <HomePrompt onStart={start} busy={saving} initialText={draft} onTextChange={saveNewSiteDraft} />
       </div>
       <div aria-live="polite" className="mt-4 min-h-5 text-sm">
         {saving && site && (
