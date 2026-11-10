@@ -29,12 +29,12 @@ export function AddKeyPrompt({ status, className }: { status: MissingModel; clas
 type AddKeyButtonProps = {
   status: MissingModel
   /** Where it's offered: the chat's request for a key, or the AI box. */
-  source: 'chat' | 'ai_box'
+  source?: 'chat' | 'ai_box'
   size?: 'default' | 'sm'
 }
 
 /** The way to Settings for what's missing: "Add an API key", "Choose models" or "Fix your API key". */
-export function AddKeyButton({ status, source, size = 'default' }: AddKeyButtonProps) {
+export function AddKeyButton({ status, source = 'chat', size = 'default' }: AddKeyButtonProps) {
   return (
     <Button asChild size={size}>
       <Link to="/settings" onClick={() => analytics.track('ai_key_setup_clicked', { status, source })}>

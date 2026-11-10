@@ -1,4 +1,4 @@
-import { type AiResult, type AiStreamEvent, aiCreateRequestSchema, MAX_PROMPT } from '@makable/shared'
+import { type AiResult, type AiStreamEvent, aiCreateRequestSchema } from '@makable/shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { type AiPausedRun, type AiThread, answerCreate, createSite, errorMessage, threadKey } from '@/features/ai-edit'
@@ -8,6 +8,7 @@ import { getSite, useSiteStore } from '@/features/site'
 import { analytics } from '@/shared/lib/analytics'
 import { ApiError } from '@/shared/lib/api-client'
 import { assistant, user } from '../lib/chat'
+import { promptProblem } from '../lib/prompt'
 import { useBuilderStore } from '../store'
 
 // Errors that mean the picked model can't be used any more.
@@ -90,7 +91,7 @@ export function useCreateSite() {
       }
       // A model error is fixed in Settings: the way there shows while there's no model to use (the lists are refetched).
       const widget = modelError ? ('add-api-key' as const) : lostGithub ? ('reconnect-github' as const) : undefined
-      say(projectId, assistant(errorMessage(e), { tone: 'error', replies: [TRY_AGAIN], steps: done, ...(widget ? { widget } : {}) }))
+      say(projectId, assistant(errorMessage(e), { tone: 'error', replies: [TRY_AGAIN], steps: done, settingsLink: modelError, ...(widget ? { widget } : {}) }))
     } finally {
       if (inFlight.current === controller) inFlight.current = null
       // The thread has the next question, or the finished creation. A fetch still on its way was sent before the
@@ -108,14 +109,30 @@ export function useCreateSite() {
     }
   }
 
-  /** Starts building the current site (`projectId` in the site store) from `prompt`. Returns false when it can't go. */
-  function start(prompt: string): boolean {
-    const { projectId } = useSiteStore.getState()
-    const request = aiCreateRequestSchema.safeParse({ projectId, prompt, ...(choice ? { model: choice } : {}) })
-    if (!request.success || inFlight.current) {
-      if (!request.success) useBuilderStore.getState().say(projectId, assistant(`Keep the description under ${MAX_PROMPT} characters.`, { tone: 'error' }))
+  /**
+   * Starts building from `prompt`: the current site (`projectId` in the site store), or with `fresh` a new one in place
+   * of the open site, once the prompt is known to go (a refused one leaves the open site as it was). Returns false
+   * when it can't go.
+   */
+  function start(prompt: string, { fresh = false }: { fresh?: boolean } = {}): boolean {
+    if (inFlight.current) return false
+    const problem = promptProblem(prompt)
+    if (problem) {
+      // The description stays in the chat, to shorten it.
+      const { projectId } = useSiteStore.getState()
+      const say = useBuilderStore.getState().say
+      say(projectId, user(prompt.trim()))
+      say(projectId, assistant(problem, { tone: 'error' }))
       return false
     }
+    if (fresh) {
+      const store = useSiteStore.getState()
+      if (store.site) store.newSite()
+      else useSiteStore.setState({ autoOpen: false })
+    }
+    const { projectId } = useSiteStore.getState()
+    const request = aiCreateRequestSchema.safeParse({ projectId, prompt, ...(choice ? { model: choice } : {}) })
+    if (!request.success) return false
     analytics.track('site_create_started', { prompt: request.data.prompt, model: choice?.model ?? 'makable-default' })
     void stream(projectId, request.data.prompt, (signal, onEvent) => createSite(request.data, onEvent, signal))
     return true

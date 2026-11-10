@@ -1,33 +1,46 @@
-import { Check } from 'lucide-react'
 import { useLocation } from 'react-router'
-import { loginWithGithub, useSession } from '@/features/auth'
+import { loginWithGithub } from '@/features/auth'
 import { Button } from '@/shared/ui/button'
 import { GithubIcon } from '@/shared/ui/github-icon'
+import { GithubExplainer } from './github-explainer'
 
 /**
- * Inline sign-in for features that need a GitHub account. The chat is persisted, so it resumes after the redirect.
- * `reconnect` asks a signed-in user to sign in again (e.g. to grant a permission makable didn't ask for before).
+ * Inline sign-in for the chat. The chat is kept, so it resumes after the redirect. A guest gets the first sign-in,
+ * with what GitHub is and where to get an account; `reconnect` asks a signed-in user to sign in again (e.g. to grant
+ * a permission makable didn't ask for before).
  */
 export function ConnectGithub({ reconnect = false }: { reconnect?: boolean }) {
-  const { data: user } = useSession()
   const location = useLocation()
+  const signIn = () => loginWithGithub(location.pathname + location.search)
 
-  if (user && !reconnect) {
+  if (reconnect) {
     return (
-      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Check className="size-3.5" />
-        Connected as @{user.login}
-      </p>
+      <div className="space-y-2">
+        <Button onClick={signIn}>
+          <GithubIcon />
+          Connect GitHub again
+        </Button>
+        <p className="text-xs text-muted-foreground">Your sites live in repos on your GitHub account. Your code stays yours.</p>
+      </div>
     )
   }
 
   return (
     <div className="space-y-2">
-      <Button onClick={() => loginWithGithub(location.pathname + location.search)}>
-        <GithubIcon />
-        {reconnect ? 'Connect GitHub again' : 'Connect GitHub'}
-      </Button>
-      <p className="text-xs text-muted-foreground">Your sites live in repos on your GitHub account. Your code stays yours.</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={signIn}>
+          <GithubIcon />
+          Continue with GitHub
+        </Button>
+        <GithubExplainer />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        No GitHub account?{' '}
+        <a href="https://github.com/signup" target="_blank" rel="noreferrer" className="font-medium text-foreground underline underline-offset-4">
+          Create one for free
+        </a>
+        , then come back here.
+      </p>
     </div>
   )
 }

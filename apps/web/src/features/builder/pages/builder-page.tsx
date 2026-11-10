@@ -1,9 +1,7 @@
-import { MAX_PROMPT } from '@makable/shared'
 import { ArrowUpRight, LoaderCircle } from 'lucide-react'
-import { useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router'
+import { useEffect, useState } from 'react'
 import { useThread } from '@/features/ai-edit'
-import { type ModelStatus, useModelReadiness } from '@/features/ai-models'
+import { useModelReadiness } from '@/features/ai-models'
 import { useSession } from '@/features/auth'
 import { Landing } from '@/features/marketing'
 import { useSiteStore } from '@/features/site'
@@ -11,16 +9,18 @@ import { analytics } from '@/shared/lib/analytics'
 import { Button } from '@/shared/ui/button'
 import { CreateView } from '../components/create-view'
 import { HomePrompt } from '../components/home-prompt'
-import { useSites } from '../hooks/use-sites'
+import { GuestChat, ModelNeededChat } from '../components/waiting-chat'
 import { Workspace } from '../components/workspace'
-import { type CreateSite, TRY_AGAIN, useCreateSite } from '../hooks/use-create-site'
-import { modelNeededReply, user } from '../lib/chat'
-import { saveNewSiteDraft, takePendingPrompt } from '../lib/pending-prompt'
-import { useBuilderStore, useSiteChat } from '../store'
+import { type CreateSite, useCreateSite } from '../hooks/use-create-site'
+import { usePendingPrompt } from '../hooks/use-pending-prompt'
+import { useSites } from '../hooks/use-sites'
+import { savePendingPrompt } from '../lib/pending-prompt'
+import { useSiteChat } from '../store'
 
 /**
- * The home page. Guests get the landing page, whose prompt box asks them to sign in. Signed in: the landing page
- * until a site is started, then the chat while it's built, then the chat beside the live preview.
+ * The home page. Guests get the landing page, and the chat asks them to sign in once they send a prompt. Signed in: the
+ * landing page until a site is started (the chat asks for an API key first if there's no AI model to build it), then
+ * the chat while it's built, then the chat beside the live preview.
  */
 export function BuilderPage() {
   const session = useSession()
@@ -53,14 +53,36 @@ export function BuilderPage() {
     )
   }
 
-  if (!user) {
-    return (
-      <Landing>
-        <HomePrompt signedIn={false} onStart={() => {}} />
-      </Landing>
-    )
-  }
+  if (!user) return <Guest />
   return <Studio login={user.login} />
+}
+
+/**
+ * A guest's home: the landing page, then the chat once they send a prompt, which asks them to sign in with GitHub
+ * (each site is a repo there). The prompt is kept across the redirect, so it's built once they're back, and a reload
+ * or a failed sign-in brings the chat back.
+ */
+function Guest() {
+  const prompt = usePendingPrompt()
+  // Back from the chat: what they asked for goes back in the box.
+  const [draft, setDraft] = useState<string>()
+
+  function start(text: string) {
+    savePendingPrompt(text.trim())
+    analytics.track('github_sign_in_prompted', { reason: 'home' })
+  }
+
+  function back() {
+    setDraft(prompt ?? undefined)
+    savePendingPrompt(null)
+  }
+
+  if (prompt) return <GuestChat prompt={prompt} onBack={back} />
+  return (
+    <Landing>
+      <HomePrompt onStart={start} initialText={draft} />
+    </Landing>
+  )
 }
 
 /** A signed-in user's builder: the site they're on, at whatever stage it is. */
@@ -73,48 +95,43 @@ function Studio({ login }: { login: string }) {
   const chat = useSiteChat(projectId)
   const sites = useSites()
   const model = useModelReadiness()
-  const navigate = useNavigate()
   const creating = !!creation.creating
+  // A prompt waiting to be built: a guest's from before they signed in, or one sent with no AI model to build it.
+  // It's in sessionStorage, so it outlives the sign-in redirect, a trip to Settings for an API key and a reload.
+  const waiting = usePendingPrompt()
+  // Back from the chat: what they asked for goes back in the box.
+  const [draft, setDraft] = useState<string>()
 
   // A browser with nothing for this account yet (a new device, cleared data): open their newest site.
   useEffect(() => {
-    if (!autoOpen || site || creating || !sites.isSuccess) return
+    if (!autoOpen || site || creating || waiting || !sites.isSuccess) return
     const newest = sites.data[0]
     if (newest) useSiteStore.getState().open(newest)
     else useSiteStore.setState({ autoOpen: false })
-  }, [autoOpen, site, creating, sites.isSuccess, sites.data])
+  }, [autoOpen, site, creating, waiting, sites.isSuccess, sites.data])
 
-  // What a guest asked for on the landing page before signing in, or a prompt sent from `/new`: a new site, once
-  // they're back (and the model lists have said whether there's a model to build it).
-  const pendingChecked = useRef(false)
+  // The waiting prompt becomes a new site once there's a model (its request carries the user's pick).
   useEffect(() => {
-    if (pendingChecked.current || model === 'checking') return
-    pendingChecked.current = true
-    const prompt = takePendingPrompt()
-    if (!prompt) return
+    if (!waiting || model !== 'ready') return
+    // Taken now, so it's started once: one the request refuses (too long) is left in the chat with why.
+    savePendingPrompt(null)
     const { site, dirty } = useSiteStore.getState()
-    // Starting another site drops the open one's unsaved edits: the new site's page has the prompt in its box, and
-    // saves them first when it's sent.
-    if (site && Object.keys(dirty).length > 0) {
-      saveNewSiteDraft(prompt)
-      void navigate('/new', { replace: true })
-      return
-    }
-    saveNewSiteDraft(null)
-    if (site) useSiteStore.getState().newSite()
-    else useSiteStore.setState({ autoOpen: false })
-    if (model === 'ready') creation.start(prompt)
-    else askForKey(prompt, model)
-  }, [creation, model, navigate])
+    // Starting another site drops the open one's unsaved edits: keep that site (its workspace saves them) instead.
+    if (site && Object.keys(dirty).length > 0) return
+    creation.start(waiting, { fresh: true })
+  }, [waiting, model, creation])
 
-  // Its result goes back to the prompt box: false (refused, e.g. too long) keeps the text there.
-  function start(prompt: string) {
-    // A prompt that can't go anyway (too long) is refused with why, before any key is asked for; while the lists load,
-    // it goes out, and a model error then asks for a key all the same.
-    if (model === 'ready' || model === 'checking' || prompt.trim().length > MAX_PROMPT) return creation.start(prompt)
-    askForKey(prompt, model)
+  function back() {
+    setDraft(waiting ?? undefined)
+    savePendingPrompt(null)
+    useSiteStore.setState({ autoOpen: false })
   }
 
+  if (waiting) {
+    // `ready`: it starts right after this render.
+    if (model === 'checking' || model === 'ready') return <Spinner />
+    return <ModelNeededChat prompt={waiting} status={model} onBack={back} />
+  }
   if (site?.repoName) return <Workspace login={login} />
   const createRun = thread.data?.run?.mode === 'create'
   if (creating || createRun || chat.messages.length > 0 || (thread.data?.turns.length ?? 0) > 0) {
@@ -127,22 +144,10 @@ function Studio({ login }: { login: string }) {
   if (autoOpen && sites.isPending) return <Spinner />
   return (
     <Landing>
-      <HomePrompt signedIn onStart={start} busy={creating} />
+      <HomePrompt onStart={(prompt) => savePendingPrompt(prompt.trim())} busy={creating} initialText={draft} />
       <RecentSites creation={creation} />
     </Landing>
   )
-}
-
-/**
- * A new site's prompt with no AI model to build it: the chat keeps it, with makable asking for an API key and the way to
- * Settings. Try again builds it once there's a model.
- */
-function askForKey(prompt: string, status: Exclude<ModelStatus, 'ready'>) {
-  analytics.track('ai_message_needs_key', { status, where: 'landing' })
-  const { projectId } = useSiteStore.getState()
-  const { say } = useBuilderStore.getState()
-  say(projectId, user(prompt.trim()))
-  say(projectId, modelNeededReply(status, { replies: [TRY_AGAIN] }))
 }
 
 /** Below the prompt: the user's latest sites, to go back to one. */
