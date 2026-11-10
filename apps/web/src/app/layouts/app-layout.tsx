@@ -1,13 +1,13 @@
 import { Link, Outlet } from 'react-router'
 import { UserMenu } from '@/features/auth'
-import { DemoVideo, SiteNav } from '@/features/marketing'
+import { DemoVideo, SiteNav, SupportMenu } from '@/features/marketing'
 import { HeaderSlot, HeaderSlotProvider } from '@/shared/ui/header-slot'
 import { MakableIcon } from '@/shared/ui/makable-logo'
 import { ThemeMenu } from '@/shared/ui/theme-menu'
 import { AnalyticsTracker } from '../analytics-tracker'
 
 /**
- * App shell. Pages can add actions to the header (`HeaderActions`); the theme switch is always there, the user menu once GitHub is connected.
+ * App shell. Pages can add actions to the header (`HeaderActions`); Support and the theme switch are always there, the user menu once GitHub is connected.
  * A visit from the resume's link opens the product demo over whatever page it lands on.
  */
 export function AppLayout() {
@@ -24,8 +24,9 @@ export function AppLayout() {
             </Link>
             <SiteNav />
           </div>
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1 sm:gap-3">
             <HeaderSlot className="flex items-center gap-1" />
+            <SupportMenu />
             <ThemeMenu />
             <UserMenu />
           </div>

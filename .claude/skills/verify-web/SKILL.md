@@ -24,7 +24,7 @@ reaches GitHub, a model or a hosting platform. Test those by hand with the backe
    bun x playwright-core install --only-shell chromium
    cp <repo>/.claude/skills/verify-web/*.mjs .
    ```
-3. **Run them:** `bun smoke.mjs`, `bun publish-smoke.mjs`, `bun ai-models-smoke.mjs`, `bun theme-smoke.mjs` (env: `BASE_URL`, default
+3. **Run them:** `bun smoke.mjs`, `bun publish-smoke.mjs`, `bun ai-models-smoke.mjs`, `bun theme-smoke.mjs`, `bun reconnect-smoke.mjs`, `bun new-site-smoke.mjs`, `bun support-smoke.mjs` (env: `BASE_URL`, default
    `http://localhost:5199`; `OUT_DIR` for screenshots, default cwd). Each prints its steps and exits non-zero on a
    failure or any page/console error.
 4. **Look at the screenshots** with the Read tool. Check the layout, not just the assertions.
@@ -60,6 +60,16 @@ chrome), Settings, and the header on a phone. Screenshots: `theme-landing-dark.p
 `theme-sign-in-dark.png`, `theme-landing-light.png`, `theme-about-dark.png`, `theme-workspace-dark.png`,
 `theme-code-dark.png`, `theme-code-light.png`, `theme-workspace-light.png`, `theme-settings-dark.png`,
 `theme-workspace-mobile-dark.png`, `theme-landing-mobile-dark.png`.
+
+**`support-smoke.mjs`** (the Support menu): a guest sees Support in the header with three items, **Chat on WhatsApp**
+first (a `wa.me` chat with the support number, new tab); Email support is a `mailto:` link that opens the mail app
+(same tab, the page stays), Book a 1:1 call opens Cal.com in a new tab (WhatsApp and Cal.com are answered by the
+script, nothing leaves the machine); the landing page's footer has the same three, WhatsApp first; signed in, the workspace's header (save state, Publish, Support, theme, account) fits without
+its groups running into each other from 360px to 1280px, and the menu fits a phone; dark mode. Each click's
+`support_contact_clicked` is checked, so the dev server needs `VITE_ANALYTICS_DEBUG=true` (the run fails without the
+first page's `page_view`; `ANALYTICS=off` skips the event checks and says so). Screenshots: `support-menu.png`,
+`support-footer.png`, `support-landing-mobile.png`, `support-workspace-header.png`,
+`support-menu-mobile.png`, `support-menu-dark.png`.
 
 **Analytics:** start the dev server with `VITE_ANALYTICS_DEBUG=true VITE_MIXPANEL_TOKEN=smoke-test-token VITE_MIXPANEL_LOCAL=true` to have
 `publish-smoke.mjs` and `ai-models-smoke.mjs` list the analytics events they saw and fail if a pasted token or API key

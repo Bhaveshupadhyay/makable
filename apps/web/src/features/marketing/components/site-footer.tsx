@@ -1,10 +1,14 @@
 import { Link } from 'react-router'
+import { analytics } from '@/shared/lib/analytics'
 import { GithubIcon } from '@/shared/ui/github-icon'
 import { MakableLogo } from '@/shared/ui/makable-logo'
-import { ISSUES_URL, REPO_URL } from '../lib/links'
+import { ISSUES_URL, MEETING_URL, REPO_URL, SUPPORT_EMAIL, SUPPORT_MAILTO, WHATSAPP_URL } from '../lib/links'
 import { FooterLogo } from './footer-logo'
 
-const COLUMNS = [
+type SupportChannel = 'whatsapp' | 'email' | 'call'
+type FooterLink = { label: string; to: string } | { label: string; href: string; support?: SupportChannel }
+
+const COLUMNS: { title: string; links: FooterLink[] }[] = [
   {
     title: 'Product',
     links: [
@@ -20,7 +24,15 @@ const COLUMNS = [
       { label: 'Report an issue', href: ISSUES_URL },
     ],
   },
-] as const
+  {
+    title: 'Support',
+    links: [
+      { label: 'Chat on WhatsApp', href: WHATSAPP_URL, support: 'whatsapp' },
+      { label: SUPPORT_EMAIL, href: SUPPORT_MAILTO, support: 'email' },
+      { label: 'Book a 1:1 call', href: MEETING_URL, support: 'call' },
+    ],
+  },
+]
 
 const YEAR = new Date().getFullYear()
 
@@ -28,8 +40,8 @@ const YEAR = new Date().getFullYear()
 export function SiteFooter() {
   return (
     <footer className="relative overflow-hidden border-t bg-muted/40">
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 pt-14 sm:px-6 md:grid-cols-[2fr_1fr_1fr]">
-        <div className="space-y-4">
+      <div className="mx-auto grid max-w-6xl gap-10 px-4 pt-14 sm:px-6 sm:grid-cols-3 lg:grid-cols-[2fr_1fr_1fr_1fr]">
+        <div className="space-y-4 sm:col-span-3 lg:col-span-1">
           <MakableLogo iconClassName="size-7" textClassName="text-lg font-bold tracking-tight" />
           <p className="max-w-xs text-sm text-muted-foreground">
             An open-source AI website builder. Chat your way to a website and publish it from your own GitHub.
@@ -55,9 +67,7 @@ export function SiteFooter() {
                       {link.label}
                     </Link>
                   ) : (
-                    <a href={link.href} target="_blank" rel="noreferrer" className="transition-colors hover:text-foreground">
-                      {link.label}
-                    </a>
+                    <ExternalLink {...link} />
                   )}
                 </li>
               ))}
@@ -73,5 +83,21 @@ export function SiteFooter() {
         <FooterLogo />
       </div>
     </footer>
+  )
+}
+
+/** A link off the site, in a new tab; an email link opens the mail app instead. */
+function ExternalLink({ label, href, support }: { label: string; href: string; support?: SupportChannel }) {
+  const email = href.startsWith('mailto:')
+  return (
+    <a
+      href={href}
+      target={email ? undefined : '_blank'}
+      rel={email ? undefined : 'noreferrer'}
+      onClick={support ? () => analytics.track('support_contact_clicked', { channel: support, placement: 'footer' }) : undefined}
+      className="break-words transition-colors hover:text-foreground"
+    >
+      {label}
+    </a>
   )
 }
