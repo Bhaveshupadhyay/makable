@@ -1,7 +1,7 @@
 // The Support menu, end to end in the browser: the real SPA against a scripted makable-backend (see fake-backend.mjs).
-// The header's Support menu is on every page, guests too: email support (a mailto link, the user's mail app) and a
-// 1:1 call on Cal.com (a new tab); the landing page's footer has the same two links; the header still fits with the
-// workspace's own actions, from a phone to a desktop. Run the dev server WITHOUT mock auth, with
+// The header's Support menu is on every page, guests too: WhatsApp first (a chat with the support number, in a new
+// tab), email support (a mailto link, the user's mail app) and a 1:1 call on Cal.com (a new tab); the landing page's
+// footer has the same three links; the header still fits with the workspace's own actions, from a phone to a desktop. Run the dev server WITHOUT mock auth, with
 // VITE_ANALYTICS_DEBUG=true for the event checks. See SKILL.md.
 import { join } from 'node:path'
 import { expect, fakeSites, launch, siteAnswer, routeBackend, watchErrors } from './fake-backend.mjs'
@@ -10,12 +10,16 @@ const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5199'
 const OUT_DIR = process.env.OUT_DIR ?? '.'
 const EMAIL = 'support@makable.tech'
 const MEETING_URL = 'https://cal.com/bhavesh-upadhyay-iubvet'
+const WHATSAPP_URL = 'https://wa.me/15053709823'
+const WHATSAPP_NUMBER = '+1 (505) 370-9823'
 
 const site = fakeSites()
 const browser = await launch()
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
-// Cal.com is answered here, so nothing leaves the machine.
-await context.route('https://cal.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Cal.com</title>' }))
+// Cal.com and WhatsApp are answered here, so nothing leaves the machine.
+for (const site of ['https://cal.com/**', 'https://wa.me/**']) {
+  await context.route(site, (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>elsewhere</title>' }))
+}
 const page = await context.newPage()
 const errors = watchErrors(page)
 await routeBackend(page, (method, path, body) => siteAnswer(site, method, path, body))
@@ -40,10 +44,11 @@ async function openSupport() {
   await supportButton().click()
   await menu().waitFor()
 }
-async function openCall(link) {
+/** Clicks a link that opens `url` in a new tab. */
+async function opensTab(link, url) {
   const [popup] = await Promise.all([page.waitForEvent('popup'), link.click()])
   await popup.waitForLoadState()
-  expect(popup.url() === MEETING_URL, `the call link must open Cal.com (${popup.url()})`)
+  expect(popup.url() === url, `the link must open ${url} in a new tab (${popup.url()})`)
   await popup.close()
 }
 /** The header's two groups don't overlap and nothing sticks out of the window or makes the page scroll sideways. */
@@ -64,12 +69,16 @@ async function expectHeaderFits(width) {
 }
 
 try {
-  // 1. A guest on the landing page: the Support menu and its two links.
+  // 1. A guest on the landing page: the Support menu and its three links, WhatsApp first.
   site.signedIn = false
   await page.goto(BASE_URL)
   await page.getByPlaceholder('Describe the site you want to build…').waitFor()
   expect(await supportButton().isVisible(), 'guests must see Support in the header')
   await openSupport()
+  const whatsappItem = menu().getByRole('menuitem', { name: /Chat on WhatsApp/ })
+  expect((await whatsappItem.getAttribute('href')) === WHATSAPP_URL, `WhatsApp must link to a chat with the number (${await whatsappItem.getAttribute('href')})`)
+  expect((await whatsappItem.getAttribute('target')) === '_blank' && (await whatsappItem.getAttribute('rel')) === 'noreferrer', 'WhatsApp must open in a new tab')
+  expect(await whatsappItem.getByText(WHATSAPP_NUMBER).isVisible(), 'the menu must show the WhatsApp number')
   const emailItem = menu().getByRole('menuitem', { name: /Email support/ })
   expect((await emailItem.getAttribute('href')) === `mailto:${EMAIL}`, `Email support must be a mailto link (${await emailItem.getAttribute('href')})`)
   expect((await emailItem.getAttribute('target')) === null, 'the email link must not open a blank tab')
@@ -77,18 +86,23 @@ try {
   const callItem = menu().getByRole('menuitem', { name: /Book a 1:1 call/ })
   expect((await callItem.getAttribute('href')) === MEETING_URL, `Book a 1:1 call must link to Cal.com (${await callItem.getAttribute('href')})`)
   expect((await callItem.getAttribute('target')) === '_blank' && (await callItem.getAttribute('rel')) === 'noreferrer', 'Cal.com must open in a new tab')
-  expect((await menu().getByRole('menuitem').count()) === 2, 'the menu must have just the email and the call')
+  const items = await menu().getByRole('menuitem').allTextContents()
+  expect(items.length === 3 && items[0].startsWith('Chat on WhatsApp'), `the menu must be WhatsApp, then the email and the call (${JSON.stringify(items)})`)
   await shot('support-menu.png')
-  console.log('✓ guest: Support menu with the mailto link and Cal.com')
+  console.log('✓ guest: Support menu with WhatsApp on top, the mailto link and Cal.com')
+
+  await opensTab(menu().getByRole('menuitem', { name: /Chat on WhatsApp/ }), WHATSAPP_URL)
+  await expectEvent('support_contact_clicked', { channel: 'whatsapp', placement: 'header' })
+  await openSupport()
 
   const before = page.url()
   await menu().getByRole('menuitem', { name: /Email support/ }).click()
   await expectEvent('support_contact_clicked', { channel: 'email', placement: 'header' })
   expect(page.url() === before, `the email link must leave the page where it was (${page.url()})`)
   await openSupport()
-  await openCall(menu().getByRole('menuitem', { name: /Book a 1:1 call/ }))
+  await opensTab(menu().getByRole('menuitem', { name: /Book a 1:1 call/ }), MEETING_URL)
   await expectEvent('support_contact_clicked', { channel: 'call', placement: 'header' })
-  console.log('✓ guest: the email link stays on the page, the call opens Cal.com in a new tab')
+  console.log('✓ guest: WhatsApp opens a chat in a new tab, the email link stays on the page, the call opens Cal.com')
 
   // 2. The landing page's footer has a Support column.
   const footer = page.getByRole('contentinfo')
@@ -98,7 +112,11 @@ try {
   expect((await footerEmail.getAttribute('href')) === `mailto:${EMAIL}` && (await footerEmail.getAttribute('target')) === null, 'the footer must have the mailto link, in the same tab')
   await page.waitForTimeout(300)
   await footer.screenshot({ path: join(OUT_DIR, 'support-footer.png') })
-  await openCall(supportColumn.getByRole('link', { name: 'Book a 1:1 call' }))
+  const footerLinks = await supportColumn.getByRole('link').allTextContents()
+  expect(footerLinks[0] === 'Chat on WhatsApp', `the footer's Support column must start with WhatsApp (${JSON.stringify(footerLinks)})`)
+  await opensTab(supportColumn.getByRole('link', { name: 'Chat on WhatsApp' }), WHATSAPP_URL)
+  await expectEvent('support_contact_clicked', { channel: 'whatsapp', placement: 'footer' })
+  await opensTab(supportColumn.getByRole('link', { name: 'Book a 1:1 call' }), MEETING_URL)
   await expectEvent('support_contact_clicked', { channel: 'call', placement: 'footer' })
   for (const width of [390, 700]) {
     await page.setViewportSize({ width, height: 900 })
@@ -111,7 +129,7 @@ try {
   await page.evaluate(() => window.scrollTo(0, 0))
   await shot('support-landing-mobile.png')
   await page.setViewportSize({ width: 1280, height: 900 })
-  console.log('✓ footer: the address and the call, on a desktop and a phone')
+  console.log('✓ footer: WhatsApp, the address and the call, on a desktop and a phone')
 
   // 3. Signed in, in the workspace: Support beside the save state and Publish, at every width.
   site.signedIn = true

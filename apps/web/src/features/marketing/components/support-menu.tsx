@@ -1,4 +1,4 @@
-import { ArrowUpRight, CalendarClock, LifeBuoy, Mail } from 'lucide-react'
+import { ArrowUpRight, CalendarClock, LifeBuoy, Mail, MessageCircle } from 'lucide-react'
 import { analytics } from '@/shared/lib/analytics'
 import {
   DropdownMenu,
@@ -8,11 +8,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/shared/ui/dropdown-menu'
-import { MEETING_URL, SUPPORT_EMAIL, SUPPORT_MAILTO } from '../lib/links'
+import { MEETING_URL, SUPPORT_EMAIL, SUPPORT_MAILTO, WHATSAPP_NUMBER, WHATSAPP_URL } from '../lib/links'
 
-const track = (channel: 'email' | 'call') => analytics.track('support_contact_clicked', { channel, placement: 'header' })
+const track = (channel: 'whatsapp' | 'email' | 'call') => analytics.track('support_contact_clicked', { channel, placement: 'header' })
 
-/** The header's Support menu, on every page (guests too): email support in the user's mail app, or book a 1:1 call on Cal.com. */
+/**
+ * The header's Support menu, on every page (guests too): chat on WhatsApp, email support in the user's mail app, or
+ * book a 1:1 call on Cal.com.
+ */
 export function SupportMenu() {
   return (
     <DropdownMenu>
@@ -28,9 +31,19 @@ export function SupportMenu() {
       <DropdownMenuContent align="end" className="w-68">
         <DropdownMenuLabel className="font-normal">
           <p className="text-sm font-medium">Need a hand?</p>
-          <p className="text-xs text-muted-foreground">Questions, bugs or ideas: write to us or book a call.</p>
+          <p className="text-xs text-muted-foreground">Questions, bugs or ideas: message us, write or book a call.</p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild data-analytics="support_whatsapp" onSelect={() => track('whatsapp')}>
+          <a href={WHATSAPP_URL} target="_blank" rel="noreferrer">
+            <MessageCircle />
+            <span className="flex min-w-0 flex-col">
+              <span>Chat on WhatsApp</span>
+              <span className="text-xs text-muted-foreground">{WHATSAPP_NUMBER}</span>
+            </span>
+            <ArrowUpRight className="ml-auto" />
+          </a>
+        </DropdownMenuItem>
         <DropdownMenuItem asChild data-analytics="support_email" onSelect={() => track('email')}>
           <a href={SUPPORT_MAILTO}>
             <Mail />

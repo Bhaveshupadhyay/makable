@@ -2,10 +2,11 @@ import { Link } from 'react-router'
 import { analytics } from '@/shared/lib/analytics'
 import { GithubIcon } from '@/shared/ui/github-icon'
 import { MakableLogo } from '@/shared/ui/makable-logo'
-import { ISSUES_URL, MEETING_URL, REPO_URL, SUPPORT_EMAIL, SUPPORT_MAILTO } from '../lib/links'
+import { ISSUES_URL, MEETING_URL, REPO_URL, SUPPORT_EMAIL, SUPPORT_MAILTO, WHATSAPP_URL } from '../lib/links'
 import { FooterLogo } from './footer-logo'
 
-type FooterLink = { label: string; to: string } | { label: string; href: string; support?: 'email' | 'call' }
+type SupportChannel = 'whatsapp' | 'email' | 'call'
+type FooterLink = { label: string; to: string } | { label: string; href: string; support?: SupportChannel }
 
 const COLUMNS: { title: string; links: FooterLink[] }[] = [
   {
@@ -26,6 +27,7 @@ const COLUMNS: { title: string; links: FooterLink[] }[] = [
   {
     title: 'Support',
     links: [
+      { label: 'Chat on WhatsApp', href: WHATSAPP_URL, support: 'whatsapp' },
       { label: SUPPORT_EMAIL, href: SUPPORT_MAILTO, support: 'email' },
       { label: 'Book a 1:1 call', href: MEETING_URL, support: 'call' },
     ],
@@ -85,7 +87,7 @@ export function SiteFooter() {
 }
 
 /** A link off the site, in a new tab; an email link opens the mail app instead. */
-function ExternalLink({ label, href, support }: { label: string; href: string; support?: 'email' | 'call' }) {
+function ExternalLink({ label, href, support }: { label: string; href: string; support?: SupportChannel }) {
   const email = href.startsWith('mailto:')
   return (
     <a

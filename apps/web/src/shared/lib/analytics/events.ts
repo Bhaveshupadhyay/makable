@@ -45,8 +45,8 @@ export type AnalyticsEvents = {
   demo_video_failed: { placement: 'dialog' | 'landing'; code: number | null; message: string }
 
   // Support: the header's Support menu (on every page) and the footer's Support column (landing and About)
-  /** A way to reach support was picked: the email link (the user's mail app) or a 1:1 call booked on Cal.com. */
-  support_contact_clicked: { channel: 'email' | 'call'; placement: 'header' | 'footer' }
+  /** A way to reach support was picked: a WhatsApp chat, the email link (the user's mail app) or a 1:1 call on Cal.com. */
+  support_contact_clicked: { channel: 'whatsapp' | 'email' | 'call'; placement: 'header' | 'footer' }
 
   // Sites built from a prompt
   site_create_started: { prompt: string; model: string }
