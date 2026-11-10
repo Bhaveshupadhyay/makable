@@ -58,7 +58,7 @@ export function SupportMenu() {
             <CalendarClock />
             <span className="flex min-w-0 flex-col">
               <span>Book a 1:1 call</span>
-              <span className="text-xs text-muted-foreground">Pick a time with Bhavesh</span>
+              <span className="text-xs text-muted-foreground">Pick a time with the founder</span>
             </span>
             <ArrowUpRight className="ml-auto" />
           </a>

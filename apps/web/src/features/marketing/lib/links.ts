@@ -6,5 +6,5 @@ export const WHATSAPP_NUMBER = '+1 (505) 370-9823'
 export const WHATSAPP_URL = 'https://wa.me/15053709823'
 export const SUPPORT_EMAIL = 'support@makable.tech'
 export const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}`
-/** A 1:1 video call with Bhavesh, who builds makable, booked on Cal.com. */
+/** A 1:1 call with makable's founder, booked on Cal.com. */
 export const MEETING_URL = 'https://cal.com/bhavesh-upadhyay-iubvet'
