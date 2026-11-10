@@ -11,7 +11,7 @@ export function SiteNav({ className }: { className?: string }) {
         to="/about"
         className={({ isActive }) =>
           cn(
-            'rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+            'rounded-md px-2 py-1.5 text-muted-foreground sm:px-2.5 transition-colors hover:bg-accent hover:text-foreground',
             isActive && 'text-foreground',
           )
         }
@@ -23,7 +23,7 @@ export function SiteNav({ className }: { className?: string }) {
         target="_blank"
         rel="noreferrer"
         aria-label="makable on GitHub"
-        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-muted-foreground sm:px-2.5 transition-colors hover:bg-accent hover:text-foreground"
       >
         <GithubIcon className="size-4" />
         <span className="hidden md:inline">GitHub</span>
