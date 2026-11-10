@@ -1,8 +1,9 @@
 // The Support menu, end to end in the browser: the real SPA against a scripted makable-backend (see fake-backend.mjs).
 // The header's Support menu is on every page, guests too: WhatsApp first (a chat with the support number, in a new
 // tab), email support (a mailto link, the user's mail app) and a 1:1 call on Cal.com (a new tab); the landing page's
-// footer has the same three links; the header still fits with the workspace's own actions, from a phone to a desktop. Run the dev server WITHOUT mock auth, with
-// VITE_ANALYTICS_DEBUG=true for the event checks. See SKILL.md.
+// footer has the same three links; the header still fits with the workspace's own actions, from a phone to a desktop.
+// Run the dev server WITHOUT mock auth and with VITE_ANALYTICS_DEBUG=true: each click's analytics event is checked,
+// and the run fails if the console logger is off (ANALYTICS=off skips those checks, and says so). See SKILL.md.
 import { join } from 'node:path'
 import { expect, fakeSites, launch, siteAnswer, routeBackend, watchErrors } from './fake-backend.mjs'
 
@@ -25,17 +26,34 @@ const errors = watchErrors(page)
 await routeBackend(page, (method, path, body) => siteAnswer(site, method, path, body))
 const shot = (name, on = page) => on.screenshot({ path: join(OUT_DIR, name) })
 
+/** Waits for `check()` to hold; past `timeout` ms, fails with `what()`. */
+async function until(check, what, timeout = 5_000) {
+  for (const deadline = Date.now() + timeout; !(await check()); await new Promise((r) => setTimeout(r, 50))) {
+    expect(Date.now() < deadline, what())
+  }
+}
+
+// The analytics events, read from the console logger. Checked unless ANALYTICS=off: whether the logger is on is
+// decided once, by waiting for the first page's page_view, never by what happens to have arrived when a check runs.
+const CHECK_ANALYTICS = process.env.ANALYTICS !== 'off'
 const events = []
 page.on('console', (m) => {
   if (!m.text().startsWith('%c[analytics]')) return
   Promise.all(m.args().map((arg) => arg.jsonValue().catch(() => null))).then(([, , name, props]) => events.push({ name, props }))
 })
+const seenEvents = () => [...new Set(events.map((e) => e.name))].join(', ')
+async function expectAnalyticsOn() {
+  if (!CHECK_ANALYTICS) return console.log('… analytics checks skipped (ANALYTICS=off)')
+  await until(
+    () => events.some((e) => e.name === 'page_view'),
+    () => 'analytics: no page_view from the console logger. Start the dev server with VITE_ANALYTICS_DEBUG=true, or run with ANALYTICS=off',
+    10_000,
+  )
+}
 async function expectEvent(name, match = {}) {
-  if (!events.some((e) => e.name === 'page_view')) return // the console logger is off
+  if (!CHECK_ANALYTICS) return
   const seenIt = () => events.some((e) => e.name === name && Object.entries(match).every(([k, v]) => e.props?.[k] === v))
-  for (const deadline = Date.now() + 5_000; !seenIt(); await new Promise((r) => setTimeout(r, 100))) {
-    expect(Date.now() < deadline, `analytics: no ${name} ${JSON.stringify(match)} (seen: ${[...new Set(events.map((e) => e.name))].join(', ')})`)
-  }
+  await until(seenIt, () => `analytics: no ${name} ${JSON.stringify(match)} (seen: ${seenEvents()})`)
 }
 
 const supportButton = () => page.getByRole('banner').getByRole('button', { name: 'Support' })
@@ -51,9 +69,12 @@ async function opensTab(link, url) {
   expect(popup.url() === url, `the link must open ${url} in a new tab (${popup.url()})`)
   await popup.close()
 }
-/** The header's two groups don't overlap and nothing sticks out of the window or makes the page scroll sideways. */
+/**
+ * The header's two groups don't overlap and nothing sticks out of the window or makes the page scroll sideways. It's
+ * measured until it fits (≤ 2 s), since the layout settles after a resize, then the last measure is checked.
+ */
 async function expectHeaderFits(width) {
-  const fit = await page.evaluate(() => {
+  const measure = () => page.evaluate(() => {
     const [left, right] = document.querySelector('header').children
     const edge = (el, side) => Math.max(...[...el.querySelectorAll('a, button')].map((c) => c.getBoundingClientRect()[side]))
     return {
@@ -63,6 +84,9 @@ async function expectHeaderFits(width) {
       overflow: document.documentElement.scrollWidth - window.innerWidth,
     }
   })
+  const fits = (f) => f.leftEnd <= f.rightStart && f.rightEnd <= width && f.overflow <= 0
+  let fit = await measure()
+  for (const deadline = Date.now() + 2_000; !fits(fit) && Date.now() < deadline; fit = await measure()) await page.waitForTimeout(50)
   expect(fit.leftEnd <= fit.rightStart, `at ${width}px the header's links must not run into its buttons (${JSON.stringify(fit)})`)
   expect(fit.rightEnd <= width, `at ${width}px the header's buttons must be on screen (${JSON.stringify(fit)})`)
   expect(fit.overflow <= 0, `at ${width}px the page must not scroll sideways (${fit.overflow}px)`)
@@ -73,6 +97,7 @@ try {
   site.signedIn = false
   await page.goto(BASE_URL)
   await page.getByPlaceholder('Describe the site you want to build…').waitFor()
+  await expectAnalyticsOn()
   expect(await supportButton().isVisible(), 'guests must see Support in the header')
   await openSupport()
   const whatsappItem = menu().getByRole('menuitem', { name: /Chat on WhatsApp/ })
@@ -137,8 +162,7 @@ try {
   await page.getByRole('banner').getByRole('button', { name: /Publish/ }).waitFor({ timeout: 30_000 })
   for (const width of [1280, 1024, 768, 640, 390, 360]) {
     await page.setViewportSize({ width, height: 844 })
-    await page.waitForTimeout(200)
-    expect(await supportButton().isVisible(), `at ${width}px the workspace must show Support`)
+    await until(() => supportButton().isVisible(), () => `at ${width}px the workspace must show Support`, 2_000)
     await expectHeaderFits(width)
   }
   await page.setViewportSize({ width: 1280, height: 900 })

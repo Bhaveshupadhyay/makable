@@ -88,7 +88,8 @@ first (a `wa.me` chat with the support number, new tab); Email support is a `mai
 (same tab, the page stays), Book a 1:1 call opens Cal.com in a new tab (WhatsApp and Cal.com are answered by the
 script, nothing leaves the machine); the landing page's footer has the same three, WhatsApp first; signed in, the workspace's header (save state, Publish, Support, theme, account) fits without
 its groups running into each other from 360px to 1280px, and the menu fits a phone; dark mode. Each click's
-`support_contact_clicked` is checked when the console logger is on. Screenshots: `support-menu.png`,
+`support_contact_clicked` is checked, so the dev server needs `VITE_ANALYTICS_DEBUG=true` (the run fails without the
+first page's `page_view`; `ANALYTICS=off` skips the event checks and says so). Screenshots: `support-menu.png`,
 `support-footer.png`, `support-landing-mobile.png`, `support-workspace-header.png`,
 `support-menu-mobile.png`, `support-menu-dark.png`.
 
